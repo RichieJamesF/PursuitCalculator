@@ -19,6 +19,7 @@ const state = {
   work: { groups: [], unassigned: [] },
   sel: null,
   saveStatus: "",
+  ridePicker: null,
   banner: params.get("stravalinked") ? "Strava linked — hit Refine after the ride." : params.get("stravaerror") ? "Strava linking failed." : "",
 };
 if (state.code) state.token = LS.getItem("pursuit:token:" + state.code) || "";
@@ -51,20 +52,21 @@ function syncWork() {
 }
 async function loadEvent() {
   if (!state.code) { render(); return; }
+  if (saving) await new Promise((r) => { const t = setInterval(() => { if (!saving) { clearInterval(t); r(); } }, 20); });
   try { state.data = await api("/events/" + encodeURIComponent(state.code)); LS.setItem("pursuit:lastCode", state.code); syncWork(); }
   catch { state.data = null; state.banner = "No event with that code yet — create it below."; }
   render();
 }
-let saveTimer = null;
-function persistGroups() {
+const setSaveStatus = (t) => { state.saveStatus = t; const s = document.getElementById("savestatus"); if (s) s.textContent = t; };
+let saving = false, saveAgain = false;
+async function persistGroups() {
   if (!state.token) return;
-  state.saveStatus = "Saving…";
-  clearTimeout(saveTimer);
-  saveTimer = setTimeout(async () => {
-    try { await api("/events/" + state.code + "/groups", "PUT", { groups: state.work.groups }, true); state.saveStatus = "Saved"; }
-    catch (e) { state.saveStatus = "Save failed: " + e.message; }
-    const s = document.getElementById("savestatus"); if (s) s.textContent = state.saveStatus;
-  }, 350);
+  if (saving) { saveAgain = true; return; }            // coalesce rapid edits, always end on latest state
+  saving = true; setSaveStatus("Saving…");
+  try { await api("/events/" + state.code + "/groups", "PUT", { groups: state.work.groups }, true); setSaveStatus("Saved"); }
+  catch (e) { setSaveStatus("Save failed: " + e.message); }
+  saving = false;
+  if (saveAgain) { saveAgain = false; persistGroups(); }
 }
 
 /* ---- event / rider actions ---------------------------------------------- */
@@ -76,9 +78,24 @@ const patchEvent = (body) => api("/events/" + state.code, "PATCH", body, true).t
 const addRider = (r) => api("/events/" + state.code + "/riders", "POST", r).then(loadEvent).catch((e) => alert(e.message));
 const updRider = (id, body) => api("/riders/" + id, "PATCH", body, true).then(loadEvent).catch((e) => alert(e.message));
 const delRider = (id) => api("/riders/" + id, "DELETE", null, true).then(loadEvent).catch((e) => alert(e.message));
-async function refine(id) {
-  state.banner = "Checking Strava…"; render();
-  try { const r = await api("/riders/" + id + "/refine", "POST", null, true); state.banner = r.matched ? `Refined from “${r.activity}” (${r.distanceKm} km): effective FTP ${r.effectiveFtp} W (×${r.calib}).` : r.message; await loadEvent(); }
+async function openRidePicker(id) {
+  state.banner = "Loading recent rides…"; render();
+  try { const r = await api("/riders/" + id + "/rides", "GET", null, true); state.ridePicker = { riderId: id, rides: r.rides, course: r.course, hideCommutes: true }; state.banner = ""; render(); }
+  catch (e) { state.banner = e.message; render(); }
+}
+function bannerFromRefine(r) {
+  if (!r.matched) return r.message;
+  if (r.mode === "power") return `Set FTP from “${r.activity}”: ${r.ftp} W${r.hadPower ? " (power meter)" : " (Strava estimate)"}. Calibration reset.`;
+  return `Refined from “${r.activity}” (${r.distanceKm} km): effective FTP ${r.effectiveFtp} W (×${r.calib}).`;
+}
+async function applyRefine(id, activityId, mode) {
+  state.ridePicker = null; state.banner = "Applying…"; render();
+  try { const r = await api("/riders/" + id + "/refine", "POST", { activityId, mode }, true); state.banner = bannerFromRefine(r); await loadEvent(); }
+  catch (e) { state.banner = e.message; render(); }
+}
+async function autoRefine(id) {
+  state.ridePicker = null; state.banner = "Finding your fastest effort on the course…"; render();
+  try { const r = await api("/riders/" + id + "/refine", "POST", { mode: "course" }, true); state.banner = bannerFromRefine(r); await loadEvent(); }
   catch (e) { state.banner = e.message; render(); }
 }
 
@@ -104,7 +121,7 @@ function moveTo(id, target) {
 const toggleLock = (id) => { const g = state.work.groups.find((q) => q.id === id); if (g) g.locked = !g.locked; persistGroups(); render(); };
 const breakGroup = (id) => { const g = state.work.groups.find((q) => q.id === id); if (!g) return; state.work.unassigned.push(...g.members); state.work.groups = state.work.groups.filter((q) => q.id !== id); persistGroups(); render(); };
 const clearGroups = () => { const locked = state.work.groups.filter((g) => g.locked); const lockedIds = new Set(locked.flatMap((g) => g.members)); state.work.unassigned = (state.data.riders || []).map((r) => r.id).filter((id) => !lockedIds.has(id)); state.work.groups = locked; state.sel = null; persistGroups(); render(); };
-const newGroup = () => { state.work.groups.push({ id: gid(), members: [], locked: false }); render(); };
+const newGroup = () => { state.work.groups.push({ id: gid(), members: [], locked: false }); persistGroups(); render(); };
 function suggestLocal(size) {
   const seg = segments(); if (!seg) { alert("Set a course first."); return; }
   const locked = state.work.groups.filter((g) => g.locked); const lockedIds = new Set(locked.flatMap((g) => g.members));
@@ -177,6 +194,43 @@ function render() {
   const sheet = localSheet();
   right.appendChild(groupsPanel(ev, canEdit, sheet));
   right.appendChild(boardEl(ev, canEdit, sheet));
+
+  if (state.ridePicker) app.appendChild(ridePickerEl());
+}
+
+function ridePickerEl() {
+  const { riderId, rides, course, hideCommutes } = state.ridePicker;
+  const rider = ridersById()[riderId];
+  const shown = rides.filter((r) => !(hideCommutes && r.commute));
+  const shortDate = (d) => new Date(d).toLocaleDateString(undefined, { day: "numeric", month: "short" });
+  const overlay = el(`<div class="modal-back"><div class="modal">
+    <div class="modal-hd"><div><span class="kicker">Refine from Strava</span><h2>${esc(rider?.name || "Rider")}'s recent rides</h2></div><button class="modal-x" id="close">×</button></div>
+    <p class="hint">Pick a real effort — not a commute. <b>Use time</b> calibrates from how fast this ride was over your course (${course.distanceKm ? course.distanceKm + " km" : "no course set"}). <b>FTP from power</b> reads the ride's power as an FTP estimate (best on a 30–60 min hard effort).</p>
+    <div class="modal-tools"><button class="btn" id="auto" ${course.distanceKm ? "" : "disabled"}>Auto · fastest effort on course</button>
+      <label class="chk"><input type="checkbox" id="hc" ${hideCommutes ? "checked" : ""}/> Hide commutes</label></div>
+    <div class="ridelist" id="ridelist"></div>
+  </div></div>`);
+  overlay.querySelector("#close").onclick = () => { state.ridePicker = null; render(); };
+  overlay.onclick = (e) => { if (e.target === overlay) { state.ridePicker = null; render(); } };
+  overlay.querySelector("#auto").onclick = () => autoRefine(riderId);
+  overlay.querySelector("#hc").onchange = (e) => { state.ridePicker.hideCommutes = e.target.checked; render(); };
+
+  const list = overlay.querySelector("#ridelist");
+  if (!shown.length) list.innerHTML = `<p class="empty">No rides in the last 6 weeks${hideCommutes ? " (commutes hidden)" : ""}.</p>`;
+  shown.forEach((rd) => {
+    const power = rd.weightedWatts != null ? `${rd.weightedWatts} W · meter` : rd.avgWatts != null ? `${rd.avgWatts} W · est` : "no power";
+    const card = el(`<div class="ridecard ${rd.matches ? "match" : ""}">
+      <div class="ride-main"><b>${esc(rd.name)}</b><span class="ride-sub">${shortDate(rd.date)} · ${rd.distanceKm} km · ${fmtDur(rd.movingTime)} · ${rd.avgSpeedKmh} km/h · ${power}</span></div>
+      <div class="ride-tags">${rd.matches ? `<span class="tg tg-match">matches course${rd.impliedCalib ? ` · ×${rd.impliedCalib}` : ""}</span>` : ""}${rd.commute ? `<span class="tg tg-com">commute</span>` : ""}${rd.hasPower ? `<span class="tg tg-pow">power meter</span>` : ""}</div>
+      <div class="ride-acts">
+        <button class="add usetime" ${rd.matches ? "" : "disabled"} title="${rd.matches ? "Calibrate from this ride's time on the course" : "Only for rides that match the course distance"}">Use time</button>
+        <button class="add usepow" ${rd.avgWatts != null || rd.weightedWatts != null ? "" : "disabled"} title="Set FTP from this ride's power">FTP from power</button>
+      </div></div>`);
+    card.querySelector(".usetime").onclick = () => applyRefine(riderId, rd.id, "course");
+    card.querySelector(".usepow").onclick = () => applyRefine(riderId, rd.id, "power");
+    list.appendChild(card);
+  });
+  return overlay;
 }
 
 function coursePanel(ev, canEdit, km, asc) {
@@ -276,7 +330,7 @@ function riderRow(r, canEdit) {
     row.querySelector(".rr-name").onblur = save;
     row.querySelectorAll(".w,.ftp,.pos,.build").forEach((i) => (i.onchange = save));
     row.querySelector(".del").onclick = () => confirm(`Remove ${r.name}?`) && delRider(r.id);
-    const rf = row.querySelector(".refine"); if (rf) rf.onclick = () => refine(r.id);
+    const rf = row.querySelector(".refine"); if (rf) rf.onclick = () => openRidePicker(r.id);
   }
   return row;
 }
