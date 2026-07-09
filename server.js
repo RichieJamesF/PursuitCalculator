@@ -9,7 +9,9 @@ import { authUrl, exchange, refresh, recentActivities, matchByDistance } from ".
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 app.use(express.json({ limit: "1mb" }));
-app.use(express.static(path.join(__dirname, "public")));
+app.use(express.static(path.join(__dirname, "public"), {
+  setHeaders: (res, p) => { if (/\.(js|mjs|css|html)$/.test(p)) res.setHeader("Cache-Control", "no-cache"); },
+}));
 
 const token = () => crypto.randomBytes(16).toString("hex");
 const genCode = () => "ride-" + crypto.randomBytes(3).toString("hex");
@@ -212,7 +214,7 @@ app.post("/api/riders/:id/refine", async (req, res) => {
 });
 
 // serve the shared engine to the browser (single source of truth, no duplication)
-app.get("/engine.mjs", (_req, res) => res.type("application/javascript").sendFile(path.join(__dirname, "lib", "engine.mjs")));
+app.get("/engine.mjs", (_req, res) => { res.setHeader("Cache-Control", "no-cache"); res.type("application/javascript").sendFile(path.join(__dirname, "lib", "engine.mjs")); });
 app.get("/api/health", (_req, res) => res.json({ ok: true }));
 app.get("*", (_req, res) => res.sendFile(path.join(__dirname, "public", "index.html")));
 
