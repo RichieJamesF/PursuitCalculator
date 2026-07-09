@@ -20,6 +20,8 @@ const state = {
   sel: null,
   saveStatus: "",
   ridePicker: null,
+  mode: params.get("code") || LS.getItem("pursuit:lastCode") ? "app" : "landing",
+  justCreated: null,
   banner: params.get("stravalinked") ? "Strava linked — hit Refine after the ride." : params.get("stravaerror") ? "Strava linking failed." : "",
 };
 if (state.code) state.token = LS.getItem("pursuit:token:" + state.code) || "";
@@ -51,10 +53,10 @@ function syncWork() {
   state.work = { groups, unassigned }; state.sel = null;
 }
 async function loadEvent() {
-  if (!state.code) { render(); return; }
+  if (!state.code) { state.mode = "landing"; render(); return; }
   if (saving) await new Promise((r) => { const t = setInterval(() => { if (!saving) { clearInterval(t); r(); } }, 20); });
-  try { state.data = await api("/events/" + encodeURIComponent(state.code)); LS.setItem("pursuit:lastCode", state.code); syncWork(); }
-  catch { state.data = null; state.banner = "No event with that code yet — create it below."; }
+  try { state.data = await api("/events/" + encodeURIComponent(state.code)); LS.setItem("pursuit:lastCode", state.code); syncWork(); state.mode = "app"; }
+  catch { state.data = null; state.mode = "landing"; state.banner = "Couldn't find event “" + state.code + "”. Check the code, or create a new event."; }
   render();
 }
 const setSaveStatus = (t) => { state.saveStatus = t; const s = document.getElementById("savestatus"); if (s) s.textContent = t; };
@@ -71,8 +73,34 @@ async function persistGroups() {
 
 /* ---- event / rider actions ---------------------------------------------- */
 async function createEvent(name, code) {
-  try { const r = await api("/events", "POST", { name, code }); state.code = r.event.code; state.token = r.organiserToken; LS.setItem("pursuit:token:" + state.code, r.organiserToken); state.data = r; syncWork(); state.banner = "Event created — save your organiser key below."; render(); }
+  try { const r = await api("/events", "POST", { name, code }); state.code = r.event.code; state.token = r.organiserToken; LS.setItem("pursuit:token:" + state.code, r.organiserToken); state.data = r; syncWork(); state.justCreated = { code: r.event.code, token: r.organiserToken, name: r.event.name }; state.mode = "landing"; state.banner = ""; render(); }
   catch (e) { alert(e.message); }
+}
+function openExisting(code, key) {
+  code = (code || "").trim().toLowerCase();
+  if (!code) { state.banner = "Enter an event code."; render(); return; }
+  state.code = code;
+  if (key && key.trim()) { state.token = key.trim(); LS.setItem("pursuit:token:" + code, state.token); }
+  else state.token = LS.getItem("pursuit:token:" + code) || "";
+  state.banner = ""; loadEvent();
+}
+function toLanding() { state.mode = "landing"; state.justCreated = null; state.ridePicker = null; render(); }
+function savedEvents() {
+  const out = [];
+  for (let i = 0; i < LS.length; i++) { const k = LS.key(i); if (k && k.startsWith("pursuit:token:")) out.push(k.slice("pursuit:token:".length)); }
+  return out;
+}
+const origin = () => location.origin;
+function detailsMailto(code, token, name) {
+  const body = `Your Pursuit event details — keep the organiser key safe, it's the only way to edit this event.\n\n`
+    + `Event: ${name}\nCode: ${code}\nOrganiser key: ${token}\n\n`
+    + `Manage the event: ${origin()}/?code=${encodeURIComponent(code)}\n`
+    + `Rider sign-up link (share this): ${origin()}/?code=${encodeURIComponent(code)}&signup=1\n`;
+  return `mailto:?subject=${encodeURIComponent(`Pursuit event: ${name} (${code})`)}&body=${encodeURIComponent(body)}`;
+}
+function copyDetails(code, token, name) {
+  const text = `Pursuit event: ${name}\nCode: ${code}\nOrganiser key: ${token}\nManage: ${origin()}/?code=${code}\nSign-up: ${origin()}/?code=${code}&signup=1`;
+  navigator.clipboard?.writeText(text); state.banner = "Event details copied to the clipboard."; render();
 }
 const patchEvent = (body) => api("/events/" + state.code, "PATCH", body, true).then(() => loadEvent()).catch((e) => alert(e.message));
 const addRider = (r) => api("/events/" + state.code + "/riders", "POST", r).then(loadEvent).catch((e) => alert(e.message));
@@ -149,6 +177,7 @@ function exportCSV(sheet) {
 /* ---- render -------------------------------------------------------------- */
 function render() {
   if (state.signup) return renderSignup();
+  if (state.mode === "landing" || !state.data) return renderLanding();
   const d = state.data, ev = d?.event, origin = location.origin;
   const km = ev?.course ? (ev.course.distanceM / 1000).toFixed(1) : "—", asc = ev?.course ? Math.round(ev.course.ascentM) : "—";
   app.innerHTML = `
@@ -163,18 +192,24 @@ function render() {
     <div class="foot">Theoretical times — a planning aid, not a promise. Tune the assumptions to your roads and riders.</div>`;
   const left = document.getElementById("left"), right = document.getElementById("right");
 
-  // Event
-  const evPanel = el(`<div class="panel"><div class="panel-hd"><h2>Event</h2></div>
-    <div class="row"><input id="code" placeholder="event-code" value="${esc(state.code)}" style="flex:1"/><button class="add" id="open">Open</button></div>
-    <div class="two" style="margin-top:10px"><input id="newname" placeholder="Event name"/><button class="btn" id="create">Create new</button></div>
-    ${state.token ? `<div class="tokenbox">Organiser key (keep it — it's how you edit this event):<br><code>${esc(state.token)}</code></div>` : d ? `<div class="row" style="margin-top:10px"><input id="paste-token" placeholder="Paste organiser key to edit" style="flex:1"/><button class="add" id="settoken">Use key</button></div>` : ""}
+  // Event summary (create/open now happen on the landing screen)
+  const canEdit = !!state.token;
+  const evPanel = el(`<div class="panel"><div class="panel-hd"><h2>Event</h2><button class="ghost" id="switch">Switch / new</button></div>
+    <div class="ev-name">${esc(ev.name)}<span class="ev-code">${esc(state.code)}</span></div>
+    ${canEdit
+      ? `<div class="keyrow"><span class="keylab">Organiser key</span><code class="keyval">${esc(state.token)}</code></div>
+         <div class="row" style="margin-top:8px"><a class="add" id="email">✉ Email me the details</a><button class="ghost" id="copy">Copy details</button></div>`
+      : `<div class="row" style="margin-top:8px"><input id="paste-token" placeholder="Paste organiser key to edit" style="flex:1"/><button class="add" id="settoken">Use key</button></div>
+         <p class="hint">You're viewing read-only. Paste the organiser key to make changes.</p>`}
   </div>`);
   left.appendChild(evPanel);
-  evPanel.querySelector("#open").onclick = () => { state.code = evPanel.querySelector("#code").value.trim().toLowerCase(); state.token = LS.getItem("pursuit:token:" + state.code) || ""; loadEvent(); };
-  evPanel.querySelector("#create").onclick = () => createEvent(evPanel.querySelector("#newname").value || "Pursuit", evPanel.querySelector("#code").value);
-  const st = evPanel.querySelector("#settoken"); if (st) st.onclick = () => { state.token = evPanel.querySelector("#paste-token").value.trim(); LS.setItem("pursuit:token:" + state.code, state.token); render(); };
-  if (!d) return;
-  const canEdit = !!state.token;
+  evPanel.querySelector("#switch").onclick = toLanding;
+  if (canEdit) {
+    evPanel.querySelector("#email").href = detailsMailto(state.code, state.token, ev.name);
+    evPanel.querySelector("#copy").onclick = () => copyDetails(state.code, state.token, ev.name);
+  } else {
+    const st = evPanel.querySelector("#settoken"); if (st) st.onclick = () => { state.token = evPanel.querySelector("#paste-token").value.trim(); LS.setItem("pursuit:token:" + state.code, state.token); render(); };
+  }
 
   // Course (manual + GPX/FIT upload + profile)
   left.appendChild(coursePanel(ev, canEdit, km, asc));
@@ -364,6 +399,61 @@ function profileSvg(profile) {
   return svg;
 }
 
+/* ---- landing / entry gate ------------------------------------------------ */
+function renderLanding() {
+  if (state.justCreated) return renderCreated();
+  const recents = savedEvents();
+  app.innerHTML = `<div class="landing">
+    <div class="rule"></div>
+    <div class="land-head"><span class="kicker">Group handicap · start sheet</span><h1>THE PURSUIT</h1></div>
+    <div class="rule"></div>
+    ${state.banner ? `<div class="banner">${esc(state.banner)}</div>` : ""}
+    <p class="land-intro">Slower groups roll off first, faster groups chase, everyone converges in one bunch. Create an event, share the sign-up link, and let the app seed the start times.</p>
+    <div class="gate">
+      <div class="gate-card">
+        <span class="gate-kick">Start here</span><h2>Create a new event</h2>
+        <p class="hint">You'll get an organiser key — the one thing you need to manage it later.</p>
+        <label class="f">Event name<input id="c-name" placeholder="e.g. Condors Summer Pursuit"/></label>
+        <label class="f">Custom code <span class="opt">optional</span><input id="c-code" placeholder="auto if left blank"/></label>
+        <button class="btn block" id="create">Create event</button>
+      </div>
+      <div class="gate-card alt">
+        <span class="gate-kick">Coming back</span><h2>Open an existing event</h2>
+        <p class="hint">Enter the code. Add the organiser key to make changes, or leave it blank to just view.</p>
+        <label class="f">Event code<input id="o-code" placeholder="event-code"/></label>
+        <label class="f">Organiser key <span class="opt">optional — for editing</span><input id="o-key" placeholder="paste key"/></label>
+        <button class="add block" id="open">Open event</button>
+      </div>
+    </div>
+    ${recents.length ? `<div class="recents"><span class="rec-lab">Your events on this device</span><div class="rec-list">${recents.map((c) => `<button class="rec" data-code="${esc(c)}">${esc(c)} ›</button>`).join("")}</div></div>` : ""}
+    <p class="land-foot">Are you a rider? Use the sign-up link your organiser sent you.</p>
+  </div>`;
+  document.getElementById("create").onclick = () => createEvent(document.getElementById("c-name").value || "Pursuit", document.getElementById("c-code").value);
+  document.getElementById("open").onclick = () => openExisting(document.getElementById("o-code").value, document.getElementById("o-key").value);
+  app.querySelectorAll(".rec").forEach((b) => (b.onclick = () => openExisting(b.dataset.code)));
+}
+
+function renderCreated() {
+  const { code, token, name } = state.justCreated;
+  app.innerHTML = `<div class="landing"><div class="rule"></div>
+    <div class="land-head"><span class="kicker" style="color:#1f7a4d">Event created</span><h1>${esc(name)}</h1></div>
+    <div class="rule"></div>
+    ${state.banner ? `<div class="banner">${esc(state.banner)}</div>` : ""}
+    <div class="created">
+      <p class="hint">Save these now. The <b>organiser key</b> is the only way to edit this event — there's no password reset.</p>
+      <div class="cr-field"><span>Event code</span><code>${esc(code)}</code></div>
+      <div class="cr-field key"><span>Organiser key</span><code>${esc(token)}</code></div>
+      <div class="row" style="margin:6px 0 4px"><a class="btn" id="email">✉ Email me the details</a><button class="add" id="copy">Copy details</button></div>
+      <div class="cr-field"><span>Rider sign-up link</span><input readonly value="${origin()}/?code=${encodeURIComponent(code)}&signup=1"/></div>
+      <button class="btn block" id="go" style="margin-top:12px">Continue to event ›</button>
+    </div>
+    <p class="land-foot">Tip: email the details to yourself so you can get back in from any device.</p>
+  </div>`;
+  document.getElementById("email").href = detailsMailto(code, token, name);
+  document.getElementById("copy").onclick = () => { copyDetails(code, token, name); };
+  document.getElementById("go").onclick = () => { state.justCreated = null; state.mode = "app"; state.banner = ""; render(); };
+}
+
 /* ---- rider self sign-up -------------------------------------------------- */
 function renderSignup() {
   app.innerHTML = `<div class="center">
@@ -387,4 +477,6 @@ function renderSignup() {
   };
 }
 
-loadEvent();
+if (state.signup) render();
+else if (state.code) loadEvent();
+else render();
