@@ -36,8 +36,11 @@ button{font-family:inherit;cursor:pointer}
 .rr{border:1px solid var(--line);border-radius:4px;background:#fff;padding:9px;margin-bottom:8px}
 .rr-name{width:100%;border:0;border-bottom:2px solid transparent;font-size:14px;font-weight:700;padding:2px 0;margin-bottom:6px}
 .rr-name:focus{border-color:var(--pink)}
-.rr-ctrl{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
-.rr-ctrl input{width:70px;padding:6px;font-size:13px}.rr-ctrl select{max-width:140px;font-size:12px;padding:6px}
+.rr-ctrl{display:flex;flex-wrap:wrap;gap:6px;align-items:flex-end}
+.rf{display:flex;flex-direction:column;gap:3px}
+.rf>span{font-size:9px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--mut)}
+.rr-ctrl input{width:70px;padding:6px;font-size:13px}.rr-ctrl select{max-width:150px;font-size:12px;padding:6px}
+.rr-ctrl .del{margin-bottom:2px}
 .rr-tools{display:flex;gap:6px;align-items:center;margin-top:8px;flex-wrap:wrap}
 .pill{font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;padding:3px 7px;border-radius:2px}
 .pill.on{background:#1f7a4d;color:#fff}.pill.off{background:#ece9e2;color:var(--mut)}

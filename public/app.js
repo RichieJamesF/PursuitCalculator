@@ -260,11 +260,13 @@ function chip(r, locked, lead) {
 function riderRow(r, canEdit) {
   const wkg = (r.ftp / (r.w + 8)).toFixed(2);
   const row = el(`<div class="rr">
-    <input class="rr-name" value="${esc(r.name)}" ${canEdit ? "" : "disabled"}/>
-    <div class="rr-ctrl"><input type="number" class="w" value="${r.w}" ${canEdit ? "" : "disabled"}/><input type="number" class="ftp" value="${r.ftp}" ${canEdit ? "" : "disabled"}/>
-      <select class="pos" ${canEdit ? "" : "disabled"}>${Object.entries(POSITIONS).map(([k, v]) => `<option value="${k}" ${k === r.pos ? "selected" : ""}>${v}</option>`).join("")}</select>
-      <select class="build" ${canEdit ? "" : "disabled"}>${Object.entries(BUILDS).map(([k, v]) => `<option value="${k}" ${k === r.build ? "selected" : ""}>${v}</option>`).join("")}</select>
-      ${canEdit ? `<button class="del">×</button>` : ""}</div>
+    <input class="rr-name" value="${esc(r.name)}" placeholder="Rider name" ${canEdit ? "" : "disabled"}/>
+    <div class="rr-ctrl">
+      <label class="rf"><span>kg</span><input type="number" class="w" value="${r.w}" ${canEdit ? "" : "disabled"}/></label>
+      <label class="rf"><span>FTP·W</span><input type="number" class="ftp" value="${r.ftp}" ${canEdit ? "" : "disabled"}/></label>
+      <label class="rf"><span>Bike</span><select class="pos" ${canEdit ? "" : "disabled"}>${Object.entries(POSITIONS).map(([k, v]) => `<option value="${k}" ${k === r.pos ? "selected" : ""}>${v}</option>`).join("")}</select></label>
+      <label class="rf"><span>Build</span><select class="build" ${canEdit ? "" : "disabled"}>${Object.entries(BUILDS).map(([k, v]) => `<option value="${k}" ${k === r.build ? "selected" : ""}>${v}</option>`).join("")}</select></label>
+      ${canEdit ? `<button class="del" title="Remove">×</button>` : ""}</div>
     <div class="rr-tools"><span class="pill ${r.strava ? "on" : "off"}">${r.strava ? "Strava linked" : "No Strava"}</span>
       <span class="micro">${wkg} W/kg${r.calib && r.calib !== 1 ? ` · cal ×${r.calib.toFixed(2)}` : ""}</span>
       ${canEdit ? `<a class="ghost" href="/auth/strava?code=${encodeURIComponent(state.code)}&rider=${r.id}">${r.strava ? "Re-link" : "Link Strava"}</a>` : ""}
