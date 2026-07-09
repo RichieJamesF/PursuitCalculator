@@ -80,3 +80,34 @@ td.grp b{display:block;color:#fff}td.gap{color:var(--pink)}
   .printhead{display:block!important;border-bottom:2px solid #000;padding-bottom:8px;margin-bottom:10px}
   .printhead b{font-size:20px;text-transform:uppercase}.printhead span{display:block;font-size:12px;color:#333}
 }
+
+/* --- course upload + profile --- */
+.drop{border:1.5px dashed var(--line);border-radius:4px;padding:16px;text-align:center;cursor:pointer;transition:.15s}
+.drop:hover,.drop.drag{border-color:var(--pink);background:#fff}
+.drop b{display:block;font-size:14px;margin-bottom:3px}.drop span{display:block;font-size:12px;color:var(--mut)}
+.err{color:#c0392b;font-size:12px;margin:8px 0 0}
+.profile{width:100%;height:60px;margin-top:12px;display:block}.profile path{fill:rgba(255,47,116,.14);stroke:var(--pink-deep);stroke-width:1}
+
+/* --- editable groups --- */
+.groups{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+@media(max-width:560px){.groups{grid-template-columns:1fr}}
+.grpcard{border:1px solid var(--line);border-radius:4px;background:#fff;padding:9px}
+.grpcard.locked{border-color:var(--pink);box-shadow:0 0 0 1px var(--pink) inset}
+.gc-top{display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+.gc-size{font-family:ui-monospace,Menlo,monospace;font-size:11px;font-weight:700}
+.gc-wkg{font-family:ui-monospace,Menlo,monospace;font-size:11px;color:var(--pink-deep)}
+.gc-actions{margin-left:auto;display:flex;gap:3px;align-items:center}
+.gc-actions .quality{margin-left:0}
+.movein{border:1px solid var(--pink);background:rgba(255,47,116,.08);color:var(--pink-deep);border-radius:3px;font-size:10px;font-weight:700;padding:3px 6px;text-transform:uppercase}
+.lock,.unpair{border:0;background:transparent;font-size:14px;padding:2px 4px;line-height:1}.unpair{color:var(--mut);font-size:18px}.unpair:hover{color:var(--pink-deep)}
+.gc-riders{display:flex;flex-direction:column;gap:6px;margin-top:7px}
+.chip{display:flex;flex-direction:column;align-items:flex-start;gap:1px;border:1px solid var(--line);border-radius:3px;background:var(--paper);padding:6px 9px;text-align:left;width:100%}
+.chip:hover{border-color:var(--ink)}
+.chip.sel{border-color:var(--pink);background:rgba(255,47,116,.08);box-shadow:0 0 0 1px var(--pink) inset}
+.chip.chip-lock{opacity:.85}
+.chip-name{font-size:14px;font-weight:700}.chip-sub{font-size:10px;color:var(--mut);font-family:ui-monospace,Menlo,monospace}
+.benchbox{margin-top:14px;border-top:1px solid var(--line);padding-top:12px}
+.bench-hd{font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--mut);font-weight:700;margin-bottom:8px}
+.bench{display:flex;flex-wrap:wrap;gap:8px;align-items:center}.bench .chip{width:auto;min-width:120px}
+.swaphint{font-size:12px;color:var(--pink-deep);margin-top:10px}
+.grpcard .turnbar{background:#eceae4;margin:6px 0 0}

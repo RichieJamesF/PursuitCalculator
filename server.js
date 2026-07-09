@@ -211,6 +211,8 @@ app.post("/api/riders/:id/refine", async (req, res) => {
   }
 });
 
+// serve the shared engine to the browser (single source of truth, no duplication)
+app.get("/engine.mjs", (_req, res) => res.type("application/javascript").sendFile(path.join(__dirname, "lib", "engine.mjs")));
 app.get("/api/health", (_req, res) => res.json({ ok: true }));
 app.get("*", (_req, res) => res.sendFile(path.join(__dirname, "public", "index.html")));
 

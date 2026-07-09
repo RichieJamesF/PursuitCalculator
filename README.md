@@ -67,11 +67,16 @@ Organiser routes require the `x-organiser-token` header.
 
 ## Honest status
 
-The **engine, grouping, start-sheet seeding and calibration maths are tested**
-(headless). The **DB and Strava OAuth round-trip need your live config** and
-haven't been exercised end-to-end here — stand it up on Railway with a Postgres
-plugin and a Strava app to try the full loop. The frontend is intentionally
-simpler than the standalone app (no drag-to-swap yet); the richer UI can be
-ported over this same API later. GPX/FIT courses can be parsed in the browser
-(as the standalone app does) and posted to `PATCH /api/events/:code` as a
-`course` object; the manual distance+ascent path covers most club courses.
+The **engine, grouping, start-sheet seeding, calibration maths, group-edit
+operations and the browser GPX/FIT parser are tested** (headless, incl. against
+a real Wahoo .fit). The **DB and Strava OAuth round-trip need your live config**
+and haven't been exercised end-to-end here — stand it up on Railway with a
+Postgres plugin and a Strava app to try the full loop.
+
+The organiser UI now matches the standalone app: tap a rider then another to
+swap, "+ here" to move between groups, lock/break groups, an unassigned bench,
+and GPX/FIT upload (parsed in the browser, incl. an elevation profile). The
+shared engine runs client-side for instant feedback while arrangements are
+saved to the server via `PUT /api/events/:code/groups`, so every viewer sees
+the same sheet. The manual distance+ascent path still covers courses without a
+file.
