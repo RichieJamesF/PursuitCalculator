@@ -1,7 +1,7 @@
 /* The Pursuit — organiser + rider-signup frontend.
    Runs the shared engine in the browser for instant feedback while persisting
    arrangements to the API, so results match the standalone app and every client. */
-import { computeSheet, suggestGroups, cdaOf } from "/engine.mjs";
+import { computeSheet, suggestGroups, soloDuration, cdaOf } from "/engine.mjs";
 import { parseCourseFile } from "./course.js";
 
 const POSITIONS = { road_hoods: "Road · hoods", road_drops: "Road · drops", aero_drops: "Aero road · drops", clipon: "Clip-on aero bars", tt: "TT / Tri bike" };
@@ -150,6 +150,24 @@ const toggleLock = (id) => { const g = state.work.groups.find((q) => q.id === id
 const breakGroup = (id) => { const g = state.work.groups.find((q) => q.id === id); if (!g) return; state.work.unassigned.push(...g.members); state.work.groups = state.work.groups.filter((q) => q.id !== id); persistGroups(); render(); };
 const clearGroups = () => { const locked = state.work.groups.filter((g) => g.locked); const lockedIds = new Set(locked.flatMap((g) => g.members)); state.work.unassigned = (state.data.riders || []).map((r) => r.id).filter((id) => !lockedIds.has(id)); state.work.groups = locked; state.sel = null; persistGroups(); render(); };
 const newGroup = () => { state.work.groups.push({ id: gid(), members: [], locked: false }); persistGroups(); render(); };
+function goSolo(id) {
+  state.work.groups = state.work.groups.map((g) => ({ ...g, members: g.members.filter((m) => m !== id) })).filter((g) => g.members.length || g.locked);
+  state.work.unassigned = state.work.unassigned.filter((m) => m !== id);
+  state.work.groups.push({ id: gid(), members: [id], locked: false });
+  state.sel = null; state.banner = ""; persistGroups(); render();
+}
+function joinBest(id) {
+  const seg = segments(), byId = ridersById(), p = paramsOf();
+  const cands = state.work.groups.filter((g) => !g.locked && g.members.length);
+  if (!cands.length || !seg) return goSolo(id);
+  const solo = soloDuration(byId[id], seg, p);
+  let best = cands[0], diff = Infinity;
+  for (const g of cands) {
+    const avg = g.members.reduce((s, m) => s + soloDuration(byId[m], seg, p), 0) / g.members.length;
+    const d = Math.abs(avg - solo); if (d < diff) { diff = d; best = g; }
+  }
+  moveTo(id, best.id);
+}
 function suggestLocal(size) {
   const seg = segments(); if (!seg) { alert("Set a course first."); return; }
   const locked = state.work.groups.filter((g) => g.locked); const lockedIds = new Set(locked.flatMap((g) => g.members));
@@ -157,7 +175,7 @@ function suggestLocal(size) {
   const { groups, leftover } = suggestGroups(pool, ridersById(), seg, paramsOf(), size);
   state.work.groups = [...locked, ...groups.map((m) => ({ id: gid(), members: m, locked: false }))];
   state.work.unassigned = leftover; state.sel = null;
-  if (leftover.length) state.banner = "One rider left over — drop them into a group.";
+  if (leftover.length) state.banner = "One rider didn't fill a group — start them solo or add them to the best-matched group below.";
   persistGroups(); render();
 }
 const onPick = (id, locked) => { if (locked) return; if (state.sel == null) state.sel = id; else if (state.sel === id) state.sel = null; else return swap(state.sel, id); render(); };
@@ -310,10 +328,23 @@ function groupsPanel(ev, canEdit, sheet) {
   state.work.groups.forEach((g) => gwrap.appendChild(groupCard(g, metrics[g.id], canEdit)));
 
   if (state.work.unassigned.length) {
-    const bench = el(`<div class="benchbox"><div class="bench-hd">Unassigned</div><div class="bench" id="benchrow"></div></div>`);
+    const bench = el(`<div class="benchbox"><div class="bench-hd">Unassigned riders</div>
+      <p class="hint">Left over from the groups? Start them solo, or drop them into the best-matched group.</p>
+      ${state.sel != null && canEdit ? `<div style="margin:8px 0"><button class="movein" id="benchhere">＋ move selected here</button></div>` : ""}
+      <div class="bench" id="benchrow"></div></div>`);
     const row = bench.querySelector("#benchrow");
-    if (state.sel != null && canEdit) { const b = el(`<button class="movein">+ here</button>`); b.onclick = () => moveTo(state.sel, "unassigned"); row.appendChild(b); }
-    state.work.unassigned.forEach((id) => { const r = ridersById()[id]; if (r) row.appendChild(chip(r, false)); });
+    const bh = bench.querySelector("#benchhere"); if (bh) bh.onclick = () => moveTo(state.sel, "unassigned");
+    state.work.unassigned.forEach((id) => {
+      const r = ridersById()[id]; if (!r) return;
+      const item = el(`<div class="benchrider"></div>`);
+      item.appendChild(chip(r, false));
+      if (canEdit) {
+        const solo = el(`<button class="ghost mini" title="Start as a one-rider pursuit">Go solo</button>`); solo.onclick = () => goSolo(id);
+        const join = el(`<button class="ghost mini" title="Add to the group closest in ability">Join best group</button>`); join.onclick = () => joinBest(id);
+        item.appendChild(solo); item.appendChild(join);
+      }
+      row.appendChild(item);
+    });
     gp.querySelector("#bench").appendChild(bench);
   }
   return gp;
@@ -412,14 +443,14 @@ function renderLanding() {
     <div class="gate">
       <div class="gate-card">
         <span class="gate-kick">Start here</span><h2>Create a new event</h2>
-        <p class="hint">You'll get an organiser key — the one thing you need to manage it later.</p>
+        <p class="hint gate-lead">You'll get an organiser key — the one thing you need to manage it later.</p>
         <label class="f">Event name<input id="c-name" placeholder="e.g. Condors Summer Pursuit"/></label>
         <label class="f">Custom code <span class="opt">optional</span><input id="c-code" placeholder="auto if left blank"/></label>
         <button class="btn block" id="create">Create event</button>
       </div>
       <div class="gate-card alt">
         <span class="gate-kick">Coming back</span><h2>Open an existing event</h2>
-        <p class="hint">Enter the code. Add the organiser key to make changes, or leave it blank to just view.</p>
+        <p class="hint gate-lead">Enter the code. Add the organiser key to make changes, or leave it blank to just view.</p>
         <label class="f">Event code<input id="o-code" placeholder="event-code"/></label>
         <label class="f">Organiser key <span class="opt">optional — for editing</span><input id="o-key" placeholder="paste key"/></label>
         <button class="add block" id="open">Open event</button>
