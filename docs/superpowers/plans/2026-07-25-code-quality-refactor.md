@@ -150,7 +150,7 @@ test("calibrationFactor raises k when the rider rode faster than predicted, ~1 f
 - [ ] **Step 3: Run the tests**
 
 Run: `npm test`
-Expected: `pass 7`, `fail 0` (7 `test(...)` blocks above).
+Expected: `pass 8`, `fail 0` (8 `test(...)` blocks above).
 
 - [ ] **Step 4: Commit**
 
@@ -237,7 +237,7 @@ test("parseFit throws when the buffer has no GPS records", () => {
 - [ ] **Step 3: Run the tests**
 
 Run: `npm test`
-Expected: `pass 11`, `fail 0` (7 from Task 1 + 4 new).
+Expected: `pass 12`, `fail 0` (8 from Task 1 + 4 new).
 
 - [ ] **Step 4: Commit**
 
@@ -1023,7 +1023,7 @@ export const asyncRoute = (fn) => (req, res, next) => { Promise.resolve(fn(req, 
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `npm test`
-Expected: `pass 17`, `fail 0` (11 from Tasks 1–2 + 6 new).
+Expected: `pass 18`, `fail 0` (12 from Tasks 1–2 + 6 new).
 
 - [ ] **Step 5: Add the centralized error-handling middleware to `server.js`**
 
@@ -1058,7 +1058,7 @@ with:
 - [ ] **Step 6: Run the full test suite**
 
 Run: `npm run test:all`
-Expected: `pass 17` (unit) then `pass 16` (integration), `fail 0` overall.
+Expected: `pass 18` (unit) then `pass 16` (integration), `fail 0` overall.
 
 - [ ] **Step 7: Commit**
 
@@ -1224,7 +1224,7 @@ Modify `server.js` — remove this entire block (the three routes now live in `r
 - [ ] **Step 3: Run the full test suite**
 
 Run: `npm run test:all`
-Expected: `pass 17` (unit) then `pass 16` (integration), `fail 0` overall — identical counts to Task 8, since this is a pure move.
+Expected: `pass 18` (unit) then `pass 16` (integration), `fail 0` overall — identical counts to Task 8, since this is a pure move.
 
 - [ ] **Step 4: Commit**
 
@@ -1378,7 +1378,7 @@ Note: `eventForRider` is defined **twice** at this point in the original file �
 - [ ] **Step 3: Run the full test suite**
 
 Run: `npm run test:all`
-Expected: `pass 17` (unit) then `pass 16` (integration), `fail 0` overall.
+Expected: `pass 18` (unit) then `pass 16` (integration), `fail 0` overall.
 
 - [ ] **Step 4: Commit**
 
@@ -1502,7 +1502,7 @@ Modify `server.js` — remove this entire block:
 - [ ] **Step 3: Run the full test suite**
 
 Run: `npm run test:all`
-Expected: `pass 17` (unit) then `pass 16` (integration), `fail 0` overall.
+Expected: `pass 18` (unit) then `pass 16` (integration), `fail 0` overall.
 
 - [ ] **Step 4: Commit**
 
@@ -1816,7 +1816,7 @@ Modify `server.js` — remove this entire block (everything from the Strava OAut
 - [ ] **Step 4: Run the full test suite**
 
 Run: `npm run test:all`
-Expected: `pass 17` (unit) then `pass 16` (integration), `fail 0` overall.
+Expected: `pass 18` (unit) then `pass 16` (integration), `fail 0` overall.
 
 - [ ] **Step 5: Commit**
 
@@ -1956,7 +1956,7 @@ tests/integration/ API route tests against a real (Docker) Postgres
 - [ ] **Step 5: Run the full test suite**
 
 Run: `npm run test:all`
-Expected: `pass 17` (unit) then `pass 16` (integration), `fail 0` overall.
+Expected: `pass 18` (unit) then `pass 16` (integration), `fail 0` overall.
 
 - [ ] **Step 6: Commit**
 
@@ -2047,7 +2047,7 @@ export const gid = () => "g" + Math.random().toString(16).slice(2, 8);
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `npm test`
-Expected: `pass 26`, `fail 0` (17 from Tasks 1–2, 8 + 9 new).
+Expected: `pass 27`, `fail 0` (18 from Tasks 1–2, 8 + 9 new).
 
 - [ ] **Step 5: Write `public/state.js`**
 
@@ -2162,7 +2162,7 @@ Expected: no output.
 - [ ] **Step 3: Run the unit suite (nothing frontend-related should be affected yet)**
 
 Run: `npm test`
-Expected: `pass 26`, `fail 0` — unchanged from Task 14, since `public/app.js` hasn't been repointed to these new modules yet.
+Expected: `pass 27`, `fail 0` — unchanged from Task 14, since `public/app.js` hasn't been repointed to these new modules yet.
 
 - [ ] **Step 4: Commit**
 
@@ -2266,7 +2266,7 @@ Expected: no output.
 - [ ] **Step 3: Run the unit suite**
 
 Run: `npm test`
-Expected: `pass 26`, `fail 0` — unchanged.
+Expected: `pass 27`, `fail 0` — unchanged.
 
 - [ ] **Step 4: Commit**
 
@@ -2376,7 +2376,7 @@ Expected: no output.
 - [ ] **Step 3: Run the unit suite**
 
 Run: `npm test`
-Expected: `pass 26`, `fail 0` — unchanged.
+Expected: `pass 27`, `fail 0` — unchanged.
 
 - [ ] **Step 4: Commit**
 
@@ -2734,7 +2734,7 @@ Expected: no output.
 - [ ] **Step 3: Run the unit suite**
 
 Run: `npm test`
-Expected: `pass 26`, `fail 0` — unchanged.
+Expected: `pass 27`, `fail 0` — unchanged.
 
 - [ ] **Step 4: Commit**
 
@@ -2772,7 +2772,7 @@ else render();
 - [ ] **Step 2: Run the full automated test suite**
 
 Run: `npm run test:all`
-Expected: `pass 26` (unit) then `pass 16` (integration), `fail 0` overall.
+Expected: `pass 27` (unit) then `pass 16` (integration), `fail 0` overall.
 
 - [ ] **Step 3: Manual smoke test against a real running server**
 
