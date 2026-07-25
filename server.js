@@ -7,6 +7,7 @@ import { DEFAULT_PARAMS, buildManualCourse, suggestGroups, computeSheet, calibra
 import { authUrl, exchange, refresh, recentActivities, activity, matchByDistance } from "./lib/strava.mjs";
 import eventsRouter from "./routes/events.js";
 import ridersRouter from "./routes/riders.js";
+import groupsRouter from "./routes/groups.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -19,6 +20,7 @@ export function createApp() {
 
   app.use(eventsRouter);
   app.use(ridersRouter);
+  app.use(groupsRouter);
 
 const token = () => crypto.randomBytes(16).toString("hex");
 const genCode = () => "ride-" + crypto.randomBytes(3).toString("hex");
@@ -58,33 +60,6 @@ async function eventForRider(riderId) {
   const { rows } = await q("SELECT e.* FROM events e JOIN riders r ON r.event_id=e.id WHERE r.id=$1", [riderId]);
   return rows[0] || null;
 }
-
-  /* ---- grouping ------------------------------------------------------------ */
-  app.post("/api/events/:code/suggest", async (req, res) => {
-    const ev = await getEvent(req.params.code);
-    if (!requireOrg(ev, req, res)) return;
-    if (!ev.course_json) return res.status(400).json({ error: "Set a course first." });
-    const riders = await getRiders(ev.id);
-    const byId = Object.fromEntries(riders.map((r) => [r.id, { id: r.id, name: r.name, w: r.weight, ftp: r.ftp, pos: r.pos, build: r.build, calib: r.calib }]));
-    const locked = (ev.groups_json || []).filter((g) => g.locked);
-    const lockedIds = new Set(locked.flatMap((g) => g.members.map(String)));
-    const pool = riders.map((r) => r.id).filter((id) => !lockedIds.has(String(id)));
-    const size = req.body?.size != null ? Math.max(1, Math.min(8, req.body.size | 0)) : ev.group_size;
-    const { groups, leftover } = suggestGroups(pool, byId, ev.course_json.segments, paramsOf(ev), size);
-    const newGroups = [...locked, ...groups.map((m) => ({ id: "g" + crypto.randomBytes(3).toString("hex"), members: m, locked: false }))];
-    await q("UPDATE events SET groups_json=$1, group_size=$2 WHERE id=$3", [JSON.stringify(newGroups), size, ev.id]);
-    const updated = await getEvent(ev.code);
-    res.json({ ...(await eventPayload(updated)), leftover });
-  });
-
-  // save a manual arrangement
-  app.put("/api/events/:code/groups", async (req, res) => {
-    const ev = await getEvent(req.params.code);
-    if (!requireOrg(ev, req, res)) return;
-    const groups = Array.isArray(req.body?.groups) ? req.body.groups : [];
-    await q("UPDATE events SET groups_json=$1 WHERE id=$2", [JSON.stringify(groups), ev.id]);
-    res.json(await eventPayload(await getEvent(ev.code)));
-  });
 
   /* ---- Strava OAuth -------------------------------------------------------- */
   // organiser (or rider) starts the link: /auth/strava?code=EVENT&rider=ID
