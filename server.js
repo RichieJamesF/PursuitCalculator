@@ -5,6 +5,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { pool, q, initDb } from "./db.js";
 import { DEFAULT_PARAMS, buildManualCourse, suggestGroups, computeSheet, calibrationFactor } from "./lib/engine.mjs";
 import { authUrl, exchange, refresh, recentActivities, activity, matchByDistance } from "./lib/strava.mjs";
+import eventsRouter from "./routes/events.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -14,6 +15,8 @@ export function createApp() {
   app.use(express.static(path.join(__dirname, "public"), {
     setHeaders: (res, p) => { if (/\.(js|mjs|css|html)$/.test(p)) res.setHeader("Cache-Control", "no-cache"); },
   }));
+
+  app.use(eventsRouter);
 
 const token = () => crypto.randomBytes(16).toString("hex");
 const genCode = () => "ride-" + crypto.randomBytes(3).toString("hex");
@@ -48,48 +51,6 @@ async function eventPayload(ev) {
     riders: riders.map(publicRider), groups, sheet,
   };
 }
-
-  /* ---- events -------------------------------------------------------------- */
-  app.post("/api/events", async (req, res) => {
-    try {
-      const name = (req.body?.name || "Pursuit").slice(0, 80);
-      let code = (req.body?.code || "").trim().toLowerCase().replace(/[^a-z0-9-]/g, "-").replace(/^-|-$/g, "") || genCode();
-      const orgToken = token();
-      const course = buildManualCourse(45, 500);
-      const { rows } = await q(
-        "INSERT INTO events(code,name,organiser_token,course_json,params_json,group_size,first_start,groups_json) VALUES($1,$2,$3,$4,$5,$6,$7,'[]') RETURNING *",
-        [code, name, orgToken, course, {}, 2, "09:30"]
-      );
-      res.json({ ...(await eventPayload(rows[0])), organiserToken: orgToken });
-    } catch (e) {
-      if (String(e.message).includes("duplicate")) return res.status(409).json({ error: "That event code is taken — pick another." });
-      console.error(e); res.status(500).json({ error: "Could not create event." });
-    }
-  });
-
-  app.get("/api/events/:code", async (req, res) => {
-    const ev = await getEvent(req.params.code);
-    if (!ev) return res.status(404).json({ error: "No event with that code." });
-    res.json(await eventPayload(ev));
-  });
-
-  app.patch("/api/events/:code", async (req, res) => {
-    const ev = await getEvent(req.params.code);
-    if (!requireOrg(ev, req, res)) return;
-    const b = req.body || {};
-    const name = b.name != null ? String(b.name).slice(0, 80) : ev.name;
-    const groupSize = b.groupSize != null ? Math.max(1, Math.min(8, b.groupSize | 0)) : ev.group_size;
-    const firstStart = b.firstStart != null ? String(b.firstStart).slice(0, 5) : ev.first_start;
-    let course = ev.course_json;
-    if (b.courseManual) course = buildManualCourse(Number(b.courseManual.km) || 45, Number(b.courseManual.ascent) || 0, (b.params || ev.params_json || {}).climbGrad || 0.05);
-    else if (b.course != null) course = b.course;   // or a pre-parsed { segments, distanceM, ascentM, name } (e.g. from a GPX/FIT parsed in the browser)
-    const params = b.params != null ? b.params : ev.params_json;
-    const { rows } = await q(
-      "UPDATE events SET name=$1,group_size=$2,first_start=$3,course_json=$4,params_json=$5 WHERE id=$6 RETURNING *",
-      [name, groupSize, firstStart, course, params, ev.id]
-    );
-    res.json(await eventPayload(rows[0]));
-  });
 
   /* ---- riders -------------------------------------------------------------- */
   // public self sign-up
