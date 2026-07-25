@@ -22,7 +22,8 @@ public/            Organiser UI + rider sign-up page (no build step),
                     grouping, views)
 tests/unit/        Fast tests for pure logic (engine, course parsing,
                     route helpers) — no DB required
-tests/integration/ API route tests against a real (Docker) Postgres
+tests/integration/ API route tests against a real, disposable local Postgres
+                    (no Docker/setup needed — see Testing below)
 ```
 
 ## Deploy on Railway
@@ -78,7 +79,9 @@ Organiser routes require the `x-organiser-token` header.
   grouping/calibration engine, GPX/FIT course parsing, and the shared route
   helpers/validators.
 - `npm run test:integration` — API route tests (`tests/integration/`) against
-  a disposable Postgres in Docker (`docker-compose.yml`). Requires Docker.
+  a real Postgres, spun up on the fly by `embedded-postgres` (a real Postgres
+  binary run directly by Node — no Docker, no install, no admin rights). It's
+  created fresh, used, and torn down automatically each run.
 - `npm run test:all` — both.
 
 ## Honest status
@@ -88,12 +91,13 @@ parser are tested** (headless). The **`.fit` parser is tested for its error
 path** (rejects a file with no GPS records) but not against a real device
 file. The **organiser UI's group-edit operations** (swap, move, lock,
 suggest — `public/grouping.js`) run client-side and are exercised manually,
-but have no automated test coverage yet. The **API route integration test
-harness exists** (`tests/integration/`) but hasn't been run against a live
-Postgres in this environment — the **DB and Strava OAuth round-trip need
-your live config** and haven't been exercised end-to-end here. Stand it up
-on Railway with a Postgres plugin and a Strava app (or run `npm run
-test:integration` with Docker locally) to try the full loop.
+but have no automated test coverage yet. The **integration harness is proven working** — `npm run test:integration`
+spins up a real Postgres, creates the schema, and round-trips a real HTTP
+request through it — but only a health-check route is covered so far;
+event/rider/group route coverage is a natural next addition now that the
+harness runs. The **Strava OAuth round-trip still needs your live config**
+and hasn't been exercised end-to-end here — stand it up on Railway with a
+Postgres plugin and a Strava app to try that part of the loop.
 
 The organiser UI now matches the standalone app: tap a rider then another to
 swap, "+ here" to move between groups, lock/break groups, an unassigned bench,

@@ -10,6 +10,17 @@
     "test:integration": "node scripts/test-integration.mjs",
     "test:all": "npm test && npm run test:integration"
   },
-  "engines": { "node": ">=18" },
-  "dependencies": { "express": "^4.19.2", "pg": "^8.11.5" }
+  "engines": {
+    "node": ">=18.2"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "pg": "^8.11.5"
+  },
+  "devDependencies": {
+    "embedded-postgres": "^17.10.0-beta.17"
+  },
+  "allowScripts": {
+    "@embedded-postgres/windows-x64@17.10.0-beta.17": true
+  }
 }

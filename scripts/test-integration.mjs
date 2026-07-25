@@ -1,49 +1,48 @@
 import { spawnSync } from "node:child_process";
-import pg from "pg";
+import os from "node:os";
+import path from "node:path";
+import EmbeddedPostgres from "embedded-postgres";
 
-const { Pool } = pg;
-const TEST_DB_URL = "postgres://pursuit_test:pursuit_test@localhost:5433/pursuit_test";
+const USER = "pursuit_test";
+const PASSWORD = "pursuit_test";
+const DATABASE = "pursuit_test";
+const PORT = 5433;
+const DATA_DIR = path.join(os.tmpdir(), `pursuit-test-pg-${process.pid}`);
 
 function run(cmd, args) {
   const r = spawnSync(cmd, args, { stdio: "inherit", shell: true });
   return r.status ?? 1;
 }
 
-async function waitForDb() {
-  const pool = new Pool({ connectionString: TEST_DB_URL });
-  pool.on("error", () => {});
-  const deadline = Date.now() + 20000;
-  while (Date.now() < deadline) {
-    try {
-      await pool.query("SELECT 1");
-      await pool.end();
-      return true;
-    } catch {
-      await new Promise((r) => setTimeout(r, 500));
-    }
-  }
-  await pool.end().catch(() => {});
-  return false;
-}
-
 async function main() {
-  console.log("Starting test database...");
-  run("docker", ["compose", "up", "-d", "test-db"]);
+  const pg = new EmbeddedPostgres({
+    databaseDir: DATA_DIR,
+    user: USER,
+    password: PASSWORD,
+    port: PORT,
+    persistent: false,
+  });
+
+  let started = false;
   try {
-    console.log("Waiting for test database to be ready...");
-    const ready = await waitForDb();
-    if (!ready) {
-      console.error("Test database did not become ready within 20s.");
-      process.exitCode = 1;
-      return;
-    }
-    process.env.DATABASE_URL = TEST_DB_URL;
+    console.log("Starting embedded test database (no Docker required)...");
+    await pg.initialise();
+    await pg.start();
+    started = true;
+    await pg.createDatabase(DATABASE);
+
+    process.env.DATABASE_URL = `postgres://${USER}:${PASSWORD}@localhost:${PORT}/${DATABASE}`;
     console.log("Running integration tests...");
     process.exitCode = run("node", ["--test", "tests/integration/*.test.mjs"]);
   } finally {
-    console.log("Stopping test database...");
-    run("docker", ["compose", "down"]);
+    if (started) {
+      console.log("Stopping embedded test database...");
+      await pg.stop();
+    }
   }
 }
 
-main();
+main().catch((e) => {
+  console.error(e);
+  process.exitCode = 1;
+});
