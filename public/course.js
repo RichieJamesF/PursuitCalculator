@@ -8,7 +8,7 @@ function haversine(a, b) {
   return 2 * R * Math.asin(Math.sqrt(h));
 }
 
-function buildCourse(pp, name) {
+export function buildCourse(pp, name) {
   if (pp.length < 2) throw new Error("Not enough points to build a course.");
   const eles = pp.map((q) => q.ele), win = 4;
   const eleS = eles.map((_, i) => { let s = 0, c = 0; for (let j = Math.max(0, i - win); j <= Math.min(eles.length - 1, i + win); j++) { s += eles[j]; c++; } return s / c; });

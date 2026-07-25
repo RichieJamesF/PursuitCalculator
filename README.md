@@ -11,11 +11,18 @@ match. The server does the computing; the browser just renders.
 ## What's what
 
 ```
-server.js          Express API + Strava OAuth + static hosting
+server.js          App assembly (createApp()) + bootstrap
+routes/            Express routers by resource (events, riders, groups,
+                    strava) + routes/helpers.js (shared DB/response helpers)
 db.js / schema.sql Postgres pool and tables (events, riders)
 lib/engine.mjs     N-up paceline physics, grouping, start-sheet, calibration
 lib/strava.mjs     Strava OAuth + activity fetch/match
-public/            Organiser UI + rider sign-up page (no build step)
+public/            Organiser UI + rider sign-up page (no build step),
+                    split into feature modules (state, api, actions,
+                    grouping, views)
+tests/unit/        Fast tests for pure logic (engine, course parsing,
+                    route helpers) — no DB required
+tests/integration/ API route tests against a real (Docker) Postgres
 ```
 
 ## Deploy on Railway
@@ -65,13 +72,28 @@ POST   /api/riders/:id/refine          (org)              Strava -> calibration
 
 Organiser routes require the `x-organiser-token` header.
 
+## Testing
+
+- `npm test` — fast unit tests (`tests/unit/`), no DB required: the physics/
+  grouping/calibration engine, GPX/FIT course parsing, and the shared route
+  helpers/validators.
+- `npm run test:integration` — API route tests (`tests/integration/`) against
+  a disposable Postgres in Docker (`docker-compose.yml`). Requires Docker.
+- `npm run test:all` — both.
+
 ## Honest status
 
-The **engine, grouping, start-sheet seeding, calibration maths, group-edit
-operations and the browser GPX/FIT parser are tested** (headless, incl. against
-a real Wahoo .fit). The **DB and Strava OAuth round-trip need your live config**
-and haven't been exercised end-to-end here — stand it up on Railway with a
-Postgres plugin and a Strava app to try the full loop.
+The **engine, start-sheet seeding, calibration maths, and the browser GPX
+parser are tested** (headless). The **`.fit` parser is tested for its error
+path** (rejects a file with no GPS records) but not against a real device
+file. The **organiser UI's group-edit operations** (swap, move, lock,
+suggest — `public/grouping.js`) run client-side and are exercised manually,
+but have no automated test coverage yet. The **API route integration test
+harness exists** (`tests/integration/`) but hasn't been run against a live
+Postgres in this environment — the **DB and Strava OAuth round-trip need
+your live config** and haven't been exercised end-to-end here. Stand it up
+on Railway with a Postgres plugin and a Strava app (or run `npm run
+test:integration` with Docker locally) to try the full loop.
 
 The organiser UI now matches the standalone app: tap a rider then another to
 swap, "+ here" to move between groups, lock/break groups, an unassigned bench,
