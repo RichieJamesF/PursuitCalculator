@@ -21,7 +21,7 @@ export async function loadEvent() {
   if (!state.code) { state.mode = "landing"; render(); return; }
   if (saving) await new Promise((r) => { const t = setInterval(() => { if (!saving) { clearInterval(t); r(); } }, 20); });
   try { state.data = await api("/events/" + encodeURIComponent(state.code)); LS.setItem("pursuit:lastCode", state.code); syncWork(); state.mode = "app"; }
-  catch { state.data = null; state.mode = "landing"; state.banner = "Couldn't find event \"" + state.code + "\". Check the code, or create a new event."; }
+  catch { state.data = null; state.mode = "landing"; state.banner = "Couldn't find event “" + state.code + "”. Check the code, or create a new event."; }
   render();
 }
 
