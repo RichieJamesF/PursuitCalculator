@@ -281,6 +281,12 @@ function normalizeRide(a, courseM, rider, segments, params) {
   app.get("/api/health", (_req, res) => res.json({ ok: true }));
   app.get("*", (_req, res) => res.sendFile(path.join(__dirname, "public", "index.html")));
 
+  // eslint-disable-next-line no-unused-vars -- 4-arg signature is what makes Express treat this as an error handler
+  app.use((err, _req, res, _next) => {
+    console.error(err);
+    res.status(500).json({ error: "Something went wrong." });
+  });
+
   return app;
 }
 
