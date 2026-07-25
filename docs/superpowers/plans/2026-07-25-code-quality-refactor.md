@@ -2394,7 +2394,7 @@ git commit -m "refactor: extract public/grouping.js"
 - Create: `public/views.js`
 
 **Interfaces:**
-- Consumes: `cdaOf` from `/engine.mjs`; `state`, `app`, `POSITIONS`, `BUILDS`, `SHADES`, `el`, `ridersById` from `public/state.js`; `esc`, `fmtDur`, `fmtGap`, `addClock` from `public/format.js`; `toLanding`, `detailsMailto`, `copyDetails`, `createEvent`, `openExisting`, `patchEvent`, `addRider`, `updRider`, `delRider`, `openRidePicker`, `autoRefine`, `applyRefine`, `origin` from `public/actions.js`; `savedEvents` and `api` from `public/api.js` (`api` is used directly by `renderSignup`); `suggestLocal`, `clearGroups`, `newGroup`, `moveTo`, `toggleLock`, `breakGroup`, `goSolo`, `joinBest`, `onPick`, `localSheet`, `exportCSV` from `public/grouping.js`; `parseCourseFile` from `public/course.js`.
+- Consumes: `cdaOf` from `/engine.mjs`; `state`, `app`, `POSITIONS`, `BUILDS`, `SHADES`, `el`, `ridersById`, `LS` from `public/state.js`; `esc`, `fmtDur`, `fmtGap`, `addClock` from `public/format.js`; `toLanding`, `detailsMailto`, `copyDetails`, `createEvent`, `openExisting`, `patchEvent`, `addRider`, `updRider`, `delRider`, `openRidePicker`, `autoRefine`, `applyRefine`, `origin` from `public/actions.js`; `savedEvents` and `api` from `public/api.js` (`api` is used directly by `renderSignup`); `suggestLocal`, `clearGroups`, `newGroup`, `moveTo`, `toggleLock`, `breakGroup`, `goSolo`, `joinBest`, `onPick`, `localSheet`, `exportCSV` from `public/grouping.js`; `parseCourseFile` from `public/course.js`.
 - Produces: `render` — consumed by `public/api.js` (Task 15), `public/grouping.js` (Task 17), `public/actions.js` (Task 16), and `public/app.js` (Task 19).
 
 - [ ] **Step 1: Create the module**
@@ -2403,7 +2403,7 @@ Create `public/views.js`:
 
 ```javascript
 import { cdaOf } from "/engine.mjs";
-import { state, app, POSITIONS, BUILDS, SHADES, el, ridersById } from "./state.js";
+import { state, app, POSITIONS, BUILDS, SHADES, el, ridersById, LS } from "./state.js";
 import { esc, fmtDur, fmtGap, addClock } from "./format.js";
 import { toLanding, detailsMailto, copyDetails, createEvent, openExisting, patchEvent, addRider, updRider, delRider, openRidePicker, autoRefine, applyRefine, origin } from "./actions.js";
 import { api, savedEvents } from "./api.js";
