@@ -14,6 +14,7 @@ export async function startTestServer() {
 }
 
 export async function stopTestServer(server) {
+  server.closeAllConnections();
   await new Promise((resolve) => server.close(resolve));
 }
 

@@ -11,6 +11,7 @@ function run(cmd, args) {
 
 async function waitForDb() {
   const pool = new Pool({ connectionString: TEST_DB_URL });
+  pool.on("error", () => {});
   const deadline = Date.now() + 20000;
   while (Date.now() < deadline) {
     try {
