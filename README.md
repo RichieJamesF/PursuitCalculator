@@ -11,11 +11,18 @@ match. The server does the computing; the browser just renders.
 ## What's what
 
 ```
-server.js          Express API + Strava OAuth + static hosting
+server.js          App assembly (createApp()) + bootstrap
+routes/            Express routers by resource (events, riders, groups,
+                    strava) + routes/helpers.js (shared DB/response helpers)
 db.js / schema.sql Postgres pool and tables (events, riders)
 lib/engine.mjs     N-up paceline physics, grouping, start-sheet, calibration
 lib/strava.mjs     Strava OAuth + activity fetch/match
-public/            Organiser UI + rider sign-up page (no build step)
+public/            Organiser UI + rider sign-up page (no build step),
+                    split into feature modules (state, api, actions,
+                    grouping, views)
+tests/unit/        Fast tests for pure logic (engine, course parsing,
+                    route helpers) — no DB required
+tests/integration/ API route tests against a real (Docker) Postgres
 ```
 
 ## Deploy on Railway
