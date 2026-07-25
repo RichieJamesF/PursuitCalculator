@@ -1,5 +1,5 @@
 import { cdaOf } from "/engine.mjs";
-import { state, app, POSITIONS, BUILDS, SHADES, el, ridersById } from "./state.js";
+import { state, app, POSITIONS, BUILDS, SHADES, el, ridersById, LS } from "./state.js";
 import { esc, fmtDur, fmtGap, addClock } from "./format.js";
 import { toLanding, detailsMailto, copyDetails, createEvent, openExisting, patchEvent, addRider, updRider, delRider, openRidePicker, autoRefine, applyRefine, origin } from "./actions.js";
 import { api, savedEvents } from "./api.js";
