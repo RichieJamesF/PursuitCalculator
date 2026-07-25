@@ -91,13 +91,17 @@ parser are tested** (headless). The **`.fit` parser is tested for its error
 path** (rejects a file with no GPS records) but not against a real device
 file. The **organiser UI's group-edit operations** (swap, move, lock,
 suggest — `public/grouping.js`) run client-side and are exercised manually,
-but have no automated test coverage yet. The **integration harness is proven working** — `npm run test:integration`
-spins up a real Postgres, creates the schema, and round-trips a real HTTP
-request through it — but only a health-check route is covered so far;
-event/rider/group route coverage is a natural next addition now that the
-harness runs. The **Strava OAuth round-trip still needs your live config**
-and hasn't been exercised end-to-end here — stand it up on Railway with a
-Postgres plugin and a Strava app to try that part of the loop.
+but have no automated test coverage yet. The **API routes are exercised
+end-to-end against a real Postgres** via `npm run test:integration`: event
+create/fetch/patch (incl. the duplicate-code 409 case), rider CRUD, group
+suggest/save, and the organiser-token auth check on every protected route.
+One case from the original plan isn't tested — `POST /api/events/:code/suggest`
+"requires a course first" — because every event gets a default course on
+creation, so that guard is currently unreachable via the public API; see the
+comment in `tests/integration/groups.test.mjs`. The **Strava OAuth
+round-trip still needs your live config** and hasn't been exercised
+end-to-end here — stand it up on Railway with a Postgres plugin and a
+Strava app to try that part of the loop.
 
 The organiser UI now matches the standalone app: tap a rider then another to
 swap, "+ here" to move between groups, lock/break groups, an unassigned bench,
