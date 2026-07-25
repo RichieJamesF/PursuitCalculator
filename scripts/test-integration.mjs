@@ -33,7 +33,11 @@ async function main() {
 
     process.env.DATABASE_URL = `postgres://${USER}:${PASSWORD}@localhost:${PORT}/${DATABASE}`;
     console.log("Running integration tests...");
-    process.exitCode = run("node", ["--test", "tests/integration/*.test.mjs"]);
+    // --test-concurrency=1: integration test files share one embedded Postgres instance,
+    // and each file's beforeEach TRUNCATEs the riders/events tables. Running files in
+    // parallel (node's default) lets one file's TRUNCATE wipe data another file is
+    // mid-request with, causing spurious 404s/undefined ids. Force sequential file execution.
+    process.exitCode = run("node", ["--test", "--test-concurrency=1", "tests/integration/*.test.mjs"]);
   } finally {
     if (started) {
       console.log("Stopping embedded test database...");
