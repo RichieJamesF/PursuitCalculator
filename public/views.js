@@ -328,6 +328,7 @@ function renderRiderPage() {
 
   const card = el(`<div class="panel"><div class="panel-hd"><h2>${esc(me.name)}</h2></div>
     <p class="hint">Change anything here and it updates the start sheet straight away. Only you and your organiser can edit this.</p>
+    <p class="err" id="rerr" style="display:none"></p>
     <label class="f">Name<input id="r-name" value="${esc(me.name)}"/></label>
     <div class="two"><label class="f">Weight (kg)<input type="number" id="r-w" value="${me.w}"/></label>
       <label class="f">FTP (W)<input type="number" id="r-ftp" value="${me.ftp}"/></label></div>
@@ -335,14 +336,19 @@ function renderRiderPage() {
       <label class="f">Build<select id="r-build">${Object.entries(BUILDS).map(([k, v]) => `<option value="${k}" ${k === me.build ? "selected" : ""}>${v}</option>`).join("")}</select></label></div>
     <p class="micro">Weight is you plus kit; the model adds 8 kg for the bike.</p>
   </div>`);
-  const save = () => updRiderSelf(me.id, {
-    name: card.querySelector("#r-name").value,
-    w: +card.querySelector("#r-w").value,
-    ftp: +card.querySelector("#r-ftp").value,
-    pos: card.querySelector("#r-pos").value,
-    build: card.querySelector("#r-build").value,
-  });
-  card.querySelector("#r-name").onblur = save;
+  const nameI = card.querySelector("#r-name"), wI = card.querySelector("#r-w"), ftpI = card.querySelector("#r-ftp"), rerr = card.querySelector("#rerr");
+  const showErr = (msg) => { rerr.textContent = msg; rerr.style.display = "block"; };
+  // Guard against blanks/typos before they ever reach the server: a rider self-editing has no
+  // one watching over their shoulder the way an organiser editing riderRow does.
+  const save = () => {
+    const name = nameI.value.trim(), w = +wI.value, ftp = +ftpI.value;
+    if (!name) { showErr("Add your name — it can't be blank."); nameI.value = me.name; return; }
+    if (!Number.isFinite(w) || w <= 30) { showErr("That weight doesn't look right — enter your weight in kg."); wI.value = me.w; return; }
+    if (!Number.isFinite(ftp) || ftp <= 50) { showErr("That FTP doesn't look right — enter your FTP in watts."); ftpI.value = me.ftp; return; }
+    rerr.style.display = "none";
+    updRiderSelf(me.id, { name, w, ftp, pos: card.querySelector("#r-pos").value, build: card.querySelector("#r-build").value });
+  };
+  nameI.onblur = save;
   card.querySelectorAll("#r-w,#r-ftp,#r-pos,#r-build").forEach((i) => (i.onchange = save));
   left.appendChild(card);
 
