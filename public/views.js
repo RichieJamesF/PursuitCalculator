@@ -1,7 +1,7 @@
 import { cdaOf } from "/engine.mjs";
 import { state, app, POSITIONS, BUILDS, SHADES, el, ridersById, LS } from "./state.js";
 import { esc, fmtDur, fmtGap, addClock } from "./format.js";
-import { toLanding, detailsMailto, copyDetails, createEvent, openExisting, patchEvent, addRider, updRider, delRider, openRidePicker, autoRefine, applyRefine, origin, signUp, riderLink, riderMailto, copyRiderDetails, openRiderPage } from "./actions.js";
+import { toLanding, detailsMailto, copyDetails, createEvent, openExisting, patchEvent, addRider, updRider, delRider, openRidePicker, autoRefine, applyRefine, origin, signUp, riderLink, riderMailto, copyRiderDetails, openRiderPage, updRiderSelf } from "./actions.js";
 import { api, savedEvents } from "./api.js";
 import { suggestLocal, clearGroups, newGroup, moveTo, toggleLock, breakGroup, goSolo, joinBest, onPick, localSheet, exportCSV } from "./grouping.js";
 import { parseCourseFile } from "./course.js";
@@ -9,6 +9,7 @@ import { parseCourseFile } from "./course.js";
 /* ---- render -------------------------------------------------------------- */
 export function render() {
   if (state.signup) return renderSignup();
+  if (state.mode === "rider" && state.data) return renderRiderPage();
   if (state.mode === "landing" || !state.data) return renderLanding();
   const d = state.data, ev = d?.event, origin = location.origin;
   const km = ev?.course ? (ev.course.distanceM / 1000).toFixed(1) : "—", asc = ev?.course ? Math.round(ev.course.ascentM) : "—";
@@ -297,6 +298,80 @@ function renderCreated() {
   document.getElementById("email").href = detailsMailto(code, token, name);
   document.getElementById("copy").onclick = () => { copyDetails(code, token, name); };
   document.getElementById("go").onclick = () => { state.justCreated = null; state.mode = "app"; state.banner = ""; render(); };
+}
+
+/* ---- rider self-service -------------------------------------------------- */
+function renderRiderPage() {
+  const me = (state.data.riders || []).find((r) => r.id === state.riderId);
+  if (!me) {
+    app.innerHTML = `<div class="center"><span class="kicker">Rider</span><h1 class="su-title">NOT FOUND</h1>
+      <p class="hint">You're not on the rider list for “${esc(state.code)}” any more — the organiser may have removed you. Sign up again with the link they sent you.</p>
+      <a class="btn" href="/?code=${encodeURIComponent(state.code)}&signup=1">Sign up again</a></div>`;
+    return;
+  }
+  const ev = state.data.event;
+  const km = ev?.course ? (ev.course.distanceM / 1000).toFixed(1) : "—";
+  const mine = state.data.sheet?.rows?.find((row) => row.members.some((m) => m.id === me.id));
+  const wkg = (me.ftp / (me.w + 8)).toFixed(2);
+
+  app.innerHTML = `
+    <div class="mast"><div class="rule"></div>
+      <div class="mast-row">
+        <div><span class="kicker">Your details</span><h1>THE PURSUIT</h1></div>
+        <div class="meta"><div><span>Event</span><b>${esc(ev.name)}</b></div><div><span>Distance</span><b>${km} km</b></div><div><span>W/kg</span><b>${wkg}</b></div></div>
+      </div><div class="rule"></div>
+    </div>
+    ${state.banner ? `<div class="banner">${esc(state.banner)}</div>` : ""}
+    <div class="grid"><div class="col" id="left"></div><div class="col" id="right"></div></div>
+    <div class="foot">Theoretical times — a planning aid, not a promise.</div>`;
+  const left = document.getElementById("left"), right = document.getElementById("right");
+
+  const card = el(`<div class="panel"><div class="panel-hd"><h2>${esc(me.name)}</h2></div>
+    <p class="hint">Change anything here and it updates the start sheet straight away. Only you and your organiser can edit this.</p>
+    <label class="f">Name<input id="r-name" value="${esc(me.name)}"/></label>
+    <div class="two"><label class="f">Weight (kg)<input type="number" id="r-w" value="${me.w}"/></label>
+      <label class="f">FTP (W)<input type="number" id="r-ftp" value="${me.ftp}"/></label></div>
+    <div class="two"><label class="f">Bike / position<select id="r-pos">${Object.entries(POSITIONS).map(([k, v]) => `<option value="${k}" ${k === me.pos ? "selected" : ""}>${v}</option>`).join("")}</select></label>
+      <label class="f">Build<select id="r-build">${Object.entries(BUILDS).map(([k, v]) => `<option value="${k}" ${k === me.build ? "selected" : ""}>${v}</option>`).join("")}</select></label></div>
+    <p class="micro">Weight is you plus kit; the model adds 8 kg for the bike.</p>
+  </div>`);
+  const save = () => updRiderSelf(me.id, {
+    name: card.querySelector("#r-name").value,
+    w: +card.querySelector("#r-w").value,
+    ftp: +card.querySelector("#r-ftp").value,
+    pos: card.querySelector("#r-pos").value,
+    build: card.querySelector("#r-build").value,
+  });
+  card.querySelector("#r-name").onblur = save;
+  card.querySelectorAll("#r-w,#r-ftp,#r-pos,#r-build").forEach((i) => (i.onchange = save));
+  left.appendChild(card);
+
+  const sv = el(`<div class="panel"><div class="panel-hd"><h2>FTP from Strava</h2></div>
+    <p class="hint">${me.strava
+      ? "Linked. Pick a recent hard ride and we'll read your FTP off its power data — no typing, no guessing."
+      : "Link Strava once, then your FTP can come straight off a recent hard ride instead of a guess."}</p>
+    <div class="row">
+      <a class="add" href="/auth/strava?code=${encodeURIComponent(state.code)}&rider=${me.id}&key=${encodeURIComponent(state.riderKey)}">${me.strava ? "Re-link Strava" : "Link Strava"}</a>
+      ${me.strava ? `<button class="btn" id="r-refine">Update my FTP from a ride</button>` : ""}
+    </div>
+    ${me.lastRefined ? `<p class="micro">Last updated from Strava on ${esc(new Date(me.lastRefined).toLocaleDateString())}.</p>` : ""}
+  </div>`);
+  const rb = sv.querySelector("#r-refine"); if (rb) rb.onclick = () => openRidePicker(me.id, "rider");
+  left.appendChild(sv);
+
+  const start = el(`<div class="panel"><div class="panel-hd"><h2>Your start</h2></div>
+    ${mine
+      ? `<div class="cr-field"><span>Your group</span><code>${mine.members.map((m) => esc(m.name)).join(" · ")}</code></div>
+         <div class="cr-field"><span>Rolls off at</span><code>${addClock(ev.firstStart, mine.offset)}</code></div>
+         <div class="cr-field"><span>Predicted time</span><code>${fmtDur(mine.dur)}</code></div>
+         <p class="micro">Seed ${mine.seed} of ${state.data.sheet.rows.length} · your share of the front is about ${Math.round((mine.members.find((m) => m.id === me.id)?.front || 0) * 100)}%.</p>`
+      : `<p class="empty">Your organiser hasn't put you in a group yet. Check back once they've set the groups.</p>`}
+    <p class="hint" style="margin-top:10px">Keep your rider link safe — it's how you get back in from another device.</p>
+    <div class="cr-field"><span>Your rider page</span><input readonly value="${riderLink(state.code, me.id, state.riderKey)}"/></div>
+  </div>`);
+  right.appendChild(start);
+
+  if (state.ridePicker) app.appendChild(ridePickerEl());
 }
 
 /* ---- rider self sign-up -------------------------------------------------- */

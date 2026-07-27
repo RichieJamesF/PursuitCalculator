@@ -44,27 +44,30 @@ export const addRider = (r) => api("/events/" + state.code + "/riders", "POST", 
 export const updRider = (id, body) => api("/riders/" + id, "PATCH", body, true).then(loadEvent).catch((e) => alert(e.message));
 export const delRider = (id) => api("/riders/" + id, "DELETE", null, true).then(loadEvent).catch((e) => alert(e.message));
 
-export async function openRidePicker(id) {
-  state.banner = "Loading recent rides…"; render();
-  try { const r = await api("/riders/" + id + "/rides", "GET", null, true); state.ridePicker = { riderId: id, rides: r.rides, course: r.course, hideCommutes: true }; state.banner = ""; render(); }
-  catch (e) { state.banner = e.message; render(); }
+export async function openRidePicker(id, auth = true) {
+  state.banner = "Looking through your recent rides…"; render();
+  try {
+    const r = await api("/riders/" + id + "/rides", "GET", null, auth);
+    state.ridePicker = { riderId: id, rides: r.rides, suggestedId: r.suggestedId, minMinutes: r.minMinutes, auth };
+    state.banner = ""; render();
+  } catch (e) { state.banner = e.message; render(); }
 }
 
 export function bannerFromRefine(r) {
   if (!r.matched) return r.message;
-  if (r.mode === "power") return `Set FTP from “${r.activity}”: ${r.ftp} W${r.hadPower ? " (power meter)" : " (Strava estimate)"}. Calibration reset.`;
-  return `Refined from “${r.activity}” (${r.distanceKm} km): effective FTP ${r.effectiveFtp} W (×${r.calib}).`;
+  const src = r.hadPower ? "power meter" : "Strava's power estimate";
+  return `FTP set to ${r.ftp} W from “${r.activity}” (${src}).`;
 }
 
-export async function applyRefine(id, activityId, mode) {
-  state.ridePicker = null; state.banner = "Applying…"; render();
-  try { const r = await api("/riders/" + id + "/refine", "POST", { activityId, mode }, true); state.banner = bannerFromRefine(r); await loadEvent(); }
+export async function applyRefine(id, activityId, auth = true) {
+  state.ridePicker = null; state.banner = "Reading that ride…"; render();
+  try { const r = await api("/riders/" + id + "/refine", "POST", { activityId }, auth); state.banner = bannerFromRefine(r); await loadEvent(); }
   catch (e) { state.banner = e.message; render(); }
 }
 
-export async function autoRefine(id) {
-  state.ridePicker = null; state.banner = "Finding your fastest effort on the course…"; render();
-  try { const r = await api("/riders/" + id + "/refine", "POST", { mode: "course" }, true); state.banner = bannerFromRefine(r); await loadEvent(); }
+export async function autoRefine(id, auth = true) {
+  state.ridePicker = null; state.banner = "Finding your hardest recent effort…"; render();
+  try { const r = await api("/riders/" + id + "/refine", "POST", {}, auth); state.banner = bannerFromRefine(r); await loadEvent(); }
   catch (e) { state.banner = e.message; render(); }
 }
 
@@ -104,3 +107,6 @@ export function openRiderPage() {
   state.banner = "";
   loadEvent();
 }
+
+export const updRiderSelf = (id, body) =>
+  api("/riders/" + id, "PATCH", body, "rider").then(loadEvent).catch((e) => alert(e.message));
