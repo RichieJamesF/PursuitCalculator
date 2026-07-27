@@ -1336,6 +1336,7 @@ signing-up device remembers the key so returning riders need no link at all.
 **Files:**
 - Modify: `public/views.js` (`render` dispatch + new `renderRiderPage`)
 - Modify: `public/actions.js` (add `updRiderSelf`; thread `auth` through the refine actions)
+- Modify: `public/api.js:24` (`loadEvent` must stop stomping rider mode — see Step 2b)
 
 **Interfaces:**
 - Consumes: `state.mode === "rider"`, `state.riderId`, `state.riderKey`, `riderLink` from Tasks 7–8; the `"rider"` auth mode in `api()` from Task 7; the `{ rides, suggestedId, minMinutes }` response shape from Task 3.
@@ -1419,7 +1420,35 @@ export function render() {
   if (state.mode === "landing" || !state.data) return renderLanding();
 ```
 
-`public/app.js` needs no change: a rider link carries `code`, so the existing bootstrap calls `loadEvent()`, which populates `state.data` and re-renders.
+- [ ] **Step 2b: Stop `loadEvent` from stomping rider mode**
+
+This step was missing from the plan's first draft and without it the rest of this task is
+dead on arrival — `renderRiderPage` would be correct but unreachable.
+
+`public/app.js` itself needs no change: a rider link carries `code`, so the existing bootstrap
+calls `loadEvent()`. But `loadEvent` currently ends its success path with an unconditional
+`state.mode = "app"`, which overwrites the `"rider"` that `state.js` just computed. The rider
+page would never render.
+
+In `public/api.js`, in `loadEvent`'s `try` block, replace:
+
+```js
+  try { state.data = await api("/events/" + encodeURIComponent(state.code)); LS.setItem("pursuit:lastCode", state.code); syncWork(); state.mode = "app"; }
+```
+
+with:
+
+```js
+  // A rider arriving on their own link is already in "rider" mode; don't demote them to the
+  // organiser view just because the event loaded.
+  try { state.data = await api("/events/" + encodeURIComponent(state.code)); LS.setItem("pursuit:lastCode", state.code); syncWork(); state.mode = state.riderId && state.riderKey ? "rider" : "app"; }
+```
+
+The `catch` branch stays as it is — a rider whose event code is wrong should land on the
+landing screen with the existing error banner, same as anyone else.
+
+This also makes `openRiderPage()` (Task 8) work: it sets `state.mode = "rider"` and then calls
+`loadEvent()`, which now recomputes the same value instead of undoing it.
 
 - [ ] **Step 3: Add `updRiderSelf` to the `views.js` action imports**
 
