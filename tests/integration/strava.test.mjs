@@ -153,6 +153,26 @@ describe("strava routes", () => {
     assert.match((await res.json()).error, /hasn't linked Strava/);
   });
 
+  test("DELETE /api/riders/:id/strava rejects with no auth", async () => {
+    const { rider } = await seed(ctx.baseUrl, "sv-unlink-auth");
+    const res = await fetch(`${ctx.baseUrl}/api/riders/${rider.id}/strava`, { method: "DELETE" });
+    assert.equal(res.status, 403);
+  });
+
+  test("DELETE /api/riders/:id/strava clears the stored Strava columns", async () => {
+    const { rider } = await seed(ctx.baseUrl, "sv-unlink");
+    await q(
+      "UPDATE riders SET strava_athlete_id=$1, strava_access_token=$2, strava_refresh_token=$3, strava_expires_at=$4 WHERE id=$5",
+      [555555, "atok", "rtok", 9999999999, rider.id]
+    );
+    const res = await fetch(`${ctx.baseUrl}/api/riders/${rider.id}/strava`, {
+      method: "DELETE", headers: { "x-rider-token": rider.riderKey },
+    });
+    assert.equal(res.status, 200);
+    const check = await fetch(`${ctx.baseUrl}/api/events/sv-unlink`).then((r) => r.json());
+    assert.equal(check.riders[0].strava, false);
+  });
+
   test("callback refuses a Strava athlete already linked to a different rider in the same event", async () => {
     process.env.STRAVA_CLIENT_ID = "test-client-id";
     process.env.STRAVA_CLIENT_SECRET = "test-client-secret";

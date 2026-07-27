@@ -40,3 +40,10 @@ so this adds no new support burden beyond what already exists today.
   history and server access logs. Accepted: a rider key grants edit rights over exactly one
   rider row, and the app already distributes event access by shareable link. Do not
   "upgrade" this to cookies or sessions without revisiting this ADR.
+- The organiser's own Strava link (`href="/auth/strava?code=…&rider=…&key=…"` in the rider
+  list) carries the *organiser* token the same way, and the "grants edit rights over exactly
+  one rider row" reasoning above doesn't cover that key — it grants edit rights over the whole
+  event. That link 302s cross-origin to strava.com, so under a browser (or embedded webview)
+  still defaulting to `no-referrer-when-downgrade` the full URL, key included, would reach
+  Strava as a referrer. Mitigated with an explicit `Referrer-Policy: no-referrer` set on every
+  response in `createApp()`, rather than relying on the modern browser default.

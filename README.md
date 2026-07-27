@@ -77,6 +77,7 @@ GET    /auth/strava?code=&rider=&key=                     start OAuth (key = org
 GET    /auth/strava/callback                              store tokens
 GET    /api/riders/:id/rides           (org | self)       recent rides, hardest usable effort first
 POST   /api/riders/:id/refine          (org | self)  {activityId?}   set FTP from a ride's power
+DELETE /api/riders/:id/strava          (org | self)       unlink Strava (clears stored tokens)
 ```
 
 Organiser routes require the `x-organiser-token` header. Rider routes accept either

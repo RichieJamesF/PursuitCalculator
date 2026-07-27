@@ -11,6 +11,10 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 export function createApp() {
   const app = express();
+  // The organiser's own Strava link carries their edit-everything key in a query string
+  // (see ADR-0003) that then 302s to strava.com; a legacy no-referrer-when-downgrade
+  // default would leak that whole URL cross-origin, so pin the policy explicitly.
+  app.use((_req, res, next) => { res.setHeader("Referrer-Policy", "no-referrer"); next(); });
   app.use(express.json({ limit: "1mb" }));
   app.use(express.static(path.join(__dirname, "public"), {
     setHeaders: (res, p) => { if (/\.(js|mjs|css|html)$/.test(p)) res.setHeader("Cache-Control", "no-cache"); },

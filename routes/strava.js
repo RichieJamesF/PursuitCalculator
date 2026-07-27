@@ -67,6 +67,16 @@ export const MIN_EFFORT_SECONDS = 1200;
 const RIDE_TYPES = new Set(["Ride", "GravelRide", "VirtualRide", "MountainBikeRide", "EBikeRide"]);
 export const isRide = (a) => RIDE_TYPES.has(a.sport_type) || a.type === "Ride";
 
+// Six weeks: recent enough that the rider still remembers the effort, distant enough
+// to not force a fresh ride onto someone between hard sessions.
+const FRESH_WINDOW_MS = 42 * 864e5;
+// The one filter both the listing and the refine-without-an-id path apply — kept in one
+// place so "the ride the rider is shown" and "the ride that gets applied" can't drift apart.
+export function freshRides(acts) {
+  const cutoff = Date.now() - FRESH_WINDOW_MS;
+  return acts.filter((a) => isRide(a) && new Date(a.start_date).getTime() >= cutoff);
+}
+
 // Weighted (normalised) power off a real meter is the best FTP stand-in; a bare
 // average — including Strava's estimate for riders with no meter — is the fallback.
 export function rideFtpWatts(a) {
@@ -111,11 +121,17 @@ router.get("/api/riders/:id/rides", asyncRoute(async (req, res) => {
   try {
     const access = await freshAccess(r);
     const acts = await recentActivities(access, 50);
-    const cutoff = Date.now() - 42 * 864e5;
-    const rides = sortRides(acts
-      .filter((a) => isRide(a) && new Date(a.start_date).getTime() >= cutoff)
-      .map(normalizeRide));
+    const rides = sortRides(freshRides(acts).map(normalizeRide));
     const suggested = pickSuggested(rides);
+    // The listing is built from summary activities, but applying a refine re-reads the
+    // *detailed* activity (weighted_average_watts isn't reliably present on the summary) —
+    // re-derive just the headline suggestion here so its number is the number that sticks.
+    if (suggested) {
+      try {
+        const detailedFtp = rideFtpWatts(await activity(access, suggested.id));
+        if (detailedFtp != null) suggested.ftpEstimate = detailedFtp;
+      } catch (e) { console.error(e); }
+    }
     res.json({ rides, suggestedId: suggested?.id ?? null, minMinutes: MIN_EFFORT_SECONDS / 60 });
   } catch (e) { console.error(e); res.status(502).json({ error: "Strava request failed — try again." }); }
 }));
@@ -134,11 +150,13 @@ router.post("/api/riders/:id/refine", asyncRoute(async (req, res) => {
       act = await activity(access, req.body.activityId);
     } else {
       const acts = await recentActivities(access, 50);
-      const cutoff = Date.now() - 42 * 864e5;
-      const fresh = acts.filter((a) => isRide(a) && new Date(a.start_date).getTime() >= cutoff);
+      const fresh = freshRides(acts);
       const best = pickSuggested(fresh.map(normalizeRide));
       if (!best) return res.json({ matched: false, message: `No ride in the last 6 weeks has power data and lasts ${MIN_EFFORT_SECONDS / 60} minutes or more. Pick a ride yourself, or ask your organiser to type your FTP in.` });
-      act = fresh.find((a) => String(a.id) === String(best.id));
+      // Fetch the detailed activity here too (not the summary object) — same reason as the
+      // explicit-id branch above: it's the only reliable source of weighted_average_watts,
+      // and it must match the number the GET listing just showed for this same ride.
+      act = await activity(access, best.id);
     }
     const ftp = rideFtpWatts(act);
     if (ftp == null) return res.status(400).json({ error: "That ride has no power data to read an FTP from." });
@@ -148,6 +166,16 @@ router.post("/api/riders/:id/refine", asyncRoute(async (req, res) => {
   } catch (e) {
     console.error(e); res.status(502).json({ error: "Strava request failed — try again." });
   }
+}));
+
+// Revoke local access to a rider's Strava account. There's no way to remove a linked
+// account otherwise short of deleting the rider — a phished rider needs a button, not that.
+router.delete("/api/riders/:id/strava", asyncRoute(async (req, res) => {
+  const ev = await eventForRider(req.params.id);
+  const r = await getRider(req.params.id);
+  if (!requireRiderOrOrg(ev, r, req, res)) return;
+  await q("UPDATE riders SET strava_athlete_id=NULL, strava_access_token=NULL, strava_refresh_token=NULL, strava_expires_at=NULL WHERE id=$1", [r.id]);
+  res.json({ ok: true });
 }));
 
 export default router;

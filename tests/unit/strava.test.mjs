@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { MIN_EFFORT_SECONDS, rideFtpWatts, normalizeRide, pickSuggested, sortRides } from "../../routes/strava.js";
+import { MIN_EFFORT_SECONDS, rideFtpWatts, normalizeRide, pickSuggested, sortRides, freshRides } from "../../routes/strava.js";
 
 const act = (over = {}) => ({
   id: 1, name: "Ride", start_date: "2026-07-01T08:00:00Z", distance: 45000,
@@ -73,6 +73,21 @@ test("pickSuggested ignores commutes and short rides", () => {
 test("pickSuggested returns null when nothing qualifies", () => {
   const rides = [normalizeRide(act({ moving_time: 300 }))];
   assert.equal(pickSuggested(rides), null);
+});
+
+test("freshRides keeps a ride inside the six-week window", () => {
+  const inside = act({ id: 1, start_date: new Date(Date.now() - 5 * 864e5).toISOString() });
+  assert.deepEqual(freshRides([inside]).map((a) => a.id), [1]);
+});
+
+test("freshRides drops a ride outside the six-week window", () => {
+  const outside = act({ id: 2, start_date: new Date(Date.now() - 50 * 864e5).toISOString() });
+  assert.deepEqual(freshRides([outside]), []);
+});
+
+test("freshRides drops a non-ride type even inside the window", () => {
+  const run = act({ id: 3, type: "Run", sport_type: "Run", start_date: new Date(Date.now() - 5 * 864e5).toISOString() });
+  assert.deepEqual(freshRides([run]), []);
 });
 
 test("sortRides puts eligible non-commutes first by power, then the rest by date, without mutating the input", () => {

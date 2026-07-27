@@ -1,7 +1,7 @@
 import { cdaOf } from "/engine.mjs";
 import { state, app, POSITIONS, BUILDS, SHADES, el, ridersById, LS } from "./state.js";
 import { esc, fmtDur, fmtGap, addClock } from "./format.js";
-import { toLanding, detailsMailto, copyDetails, createEvent, openExisting, patchEvent, addRider, updRider, delRider, openRidePicker, autoRefine, applyRefine, origin, signUp, riderLink, riderMailto, copyRiderDetails, openRiderPage, updRiderSelf } from "./actions.js";
+import { toLanding, detailsMailto, copyDetails, createEvent, openExisting, patchEvent, addRider, updRider, delRider, openRidePicker, autoRefine, applyRefine, origin, signUp, riderLink, riderMailto, copyRiderDetails, openRiderPage, updRiderSelf, unlinkStrava } from "./actions.js";
 import { api, savedEvents } from "./api.js";
 import { suggestLocal, clearGroups, newGroup, moveTo, toggleLock, breakGroup, goSolo, joinBest, onPick, localSheet, exportCSV } from "./grouping.js";
 import { parseCourseFile } from "./course.js";
@@ -108,7 +108,7 @@ function ridePickerEl() {
       <div class="ride-main"><b>${esc(rd.name)}</b>
         <span class="ride-sub">${shortDate(rd.date)} · ${rd.distanceKm} km · ${fmtDur(rd.movingTime)} · ${powerLabel(rd)}</span></div>
       <div class="ride-tags">${rd.commute ? `<span class="tg tg-com">commute</span>` : ""}${rd.hasPower ? `<span class="tg tg-pow">power meter</span>` : ""}${reason ? `<span class="tg tg-reason">${esc(reason)}</span>` : ""}</div>
-      <div class="ride-acts"><button class="add use" ${rd.eligible ? "" : "disabled"} title="${rd.eligible ? `Set FTP to ${rd.ftpEstimate} W` : `Can't use this ride — ${reason}`}">${rd.eligible ? `Use · ${rd.ftpEstimate} W` : "Can't use"}</button></div></div>`);
+      <div class="ride-acts"><button class="add use" ${rd.eligible ? "" : "disabled"} title="${rd.eligible ? "Set your FTP from this ride" : `Can't use this ride — ${reason}`}">${rd.eligible ? "Use this ride" : "Can't use"}</button></div></div>`);
     const btn = card.querySelector(".use");
     if (rd.eligible) btn.onclick = () => applyRefine(riderId, rd.id, auth);
     list.appendChild(card);
@@ -342,7 +342,7 @@ function renderRiderPage() {
   const left = document.getElementById("left"), right = document.getElementById("right");
 
   const card = el(`<div class="panel"><div class="panel-hd"><h2>${esc(me.name)}</h2></div>
-    <p class="hint">Change anything here and it updates the start sheet straight away. Only you and your organiser can edit this.</p>
+    <p class="hint">Change anything here and it updates the start sheet straight away. Everyone with the event link can see your numbers below; only you and your organiser can change them.</p>
     <p class="err" id="rerr" style="display:none"></p>
     <label class="f">Name<input id="r-name" value="${esc(me.name)}"/></label>
     <div class="two"><label class="f">Weight (kg)<input type="number" id="r-w" value="${me.w}"/></label>
@@ -374,10 +374,12 @@ function renderRiderPage() {
     <div class="row">
       <a class="add" href="/auth/strava?code=${encodeURIComponent(state.code)}&rider=${me.id}&key=${encodeURIComponent(state.riderKey)}">${me.strava ? "Re-link Strava" : "Link Strava"}</a>
       ${me.strava ? `<button class="btn" id="r-refine">Update my FTP from a ride</button>` : ""}
+      ${me.strava ? `<button class="ghost" id="r-unlink">Unlink Strava</button>` : ""}
     </div>
     ${me.lastRefined ? `<p class="micro">Last updated from Strava on ${esc(new Date(me.lastRefined).toLocaleDateString())}.</p>` : ""}
   </div>`);
   const rb = sv.querySelector("#r-refine"); if (rb) rb.onclick = () => openRidePicker(me.id, "rider");
+  const ub = sv.querySelector("#r-unlink"); if (ub) ub.onclick = () => { if (confirm("Unlink Strava? You'll need to re-link before refining your FTP from a ride again.")) unlinkStrava(me.id, "rider"); };
   left.appendChild(sv);
 
   const start = el(`<div class="panel"><div class="panel-hd"><h2>Your start</h2></div>
