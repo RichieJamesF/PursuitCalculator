@@ -107,8 +107,7 @@ router.post("/api/riders/:id/refine", asyncRoute(async (req, res) => {
       await q("UPDATE riders SET ftp=$1, calib=1, last_refined_at=now() WHERE id=$2", [ftp, r.id]);
       return res.json({ matched: true, mode: "power", activity: act.name, ftp, hadPower: !!act.device_watts });
     }
-    await q("UPDATE riders SET calib=1, last_refined_at=now() WHERE id=$1", [r.id]);
-    res.json({ matched: true, mode: "course", activity: act.name, distanceKm: (act.distance / 1000).toFixed(1), movingTime: act.moving_time, calib: 1, effectiveFtp: Math.round(r.ftp) });
+    return res.json({ matched: false, message: "Calibrating from a ride's time has been retired — use FTP from power instead." });
   } catch (e) {
     console.error(e); res.status(502).json({ error: "Strava request failed — try again." });
   }

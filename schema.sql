@@ -20,7 +20,7 @@ CREATE TABLE IF NOT EXISTS riders (
   ftp                   REAL NOT NULL DEFAULT 240,
   pos                   TEXT NOT NULL DEFAULT 'road_drops',
   build                 TEXT NOT NULL DEFAULT 'medium',
-  calib                 REAL NOT NULL DEFAULT 1,   -- Strava-refined power multiplier
+  calib                 REAL NOT NULL DEFAULT 1,   -- retired (ADR-0001), always 1
   strava_athlete_id     BIGINT,
   strava_access_token   TEXT,
   strava_refresh_token  TEXT,
