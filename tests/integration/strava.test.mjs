@@ -446,12 +446,17 @@ describe("strava routes", () => {
 
   test("POST /auth/strava re-runs the same auth checks as the GET (bad key -> 403)", async () => {
     const { rider } = await seed(ctx.baseUrl, "sv-postbadkey");
+    // Cookie and form nonce match, so a nonce-check-only path would sail through (302) —
+    // the only thing that can 403 here is checkStravaAuth's own key check. Asserting the
+    // body text pins it to that specific check rather than any 403.
+    const cookieNonce = "matching-nonce-for-badkey-test";
     const res = await fetch(`${ctx.baseUrl}/auth/strava`, {
       method: "POST", redirect: "manual",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({ code: "sv-postbadkey", rider: String(rider.id), key: "nope", nonce: "x" }).toString(),
+      headers: { "Content-Type": "application/x-www-form-urlencoded", Cookie: `pursuit_oauth_nonce=${cookieNonce}` },
+      body: new URLSearchParams({ code: "sv-postbadkey", rider: String(rider.id), key: "nope", nonce: cookieNonce }).toString(),
     });
     assert.equal(res.status, 403);
+    assert.match(await res.text(), /That key doesn't grant access to this rider\./);
   });
 
   // Same round-trip as the happy-path test above, but with the organiser's key instead of

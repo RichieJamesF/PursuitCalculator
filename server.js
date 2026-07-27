@@ -14,7 +14,7 @@ export function createApp() {
   // The organiser's own Strava link carries their edit-everything key in a query string
   // (see ADR-0003) that then 302s to strava.com; a legacy no-referrer-when-downgrade
   // default would leak that whole URL cross-origin, so pin the policy explicitly.
-  app.use((_req, res, next) => { res.setHeader("Referrer-Policy", "no-referrer"); next(); });
+  app.use((_req, res, next) => { res.setHeader("Referrer-Policy", "no-referrer"); res.setHeader("X-Frame-Options", "DENY"); next(); });
   app.use(express.json({ limit: "1mb" }));
   // The /auth/strava confirmation page POSTs a plain HTML form (application/x-www-form-urlencoded),
   // not JSON — express.json() alone leaves req.body empty for that request.

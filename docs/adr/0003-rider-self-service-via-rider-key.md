@@ -123,3 +123,32 @@ it; the nonce remains necessary for the second leg.
 - `/auth/strava` is now GET (confirm) + POST (act). A bookmarked or re-sent GET is harmless.
 - The 2026-07-27 recommendation that the cookie alone closed this was wrong, and is corrected
   here rather than quietly amended, because the earlier text is what justified the cookie.
+
+### Correction: the confirmation page does not close it either
+
+Review of the confirmation step found its stated premise — "a victim sees a rider name that is
+not theirs" — is false. Rider names are free text with no uniqueness constraint,
+`GET /api/events/:code` is unauthenticated and lists every rider, and rider sign-up is public.
+So an attacker can read the victim's exact name and event, create a second rider **in the
+victim's own event with the victim's own name**, and send the link for it. The victim then
+reads their real name and their real event on the correct domain, and "only continue if that's
+you" is something they can truthfully answer yes to.
+
+Tracing that further exposes the actual root cause, which is not specific to Strava at all:
+**a rider key in a shareable URL is auto-adopted as that browser's identity.**
+`public/state.js` stores any `?key=` it sees and treats the browser as that rider from then on.
+So anyone who sends you a link can silently put your browser into another rider's session, and
+every control downstream of that — the nonce cookie, the confirmation page, a POST-with-header
+initiation — is a speed bump rather than a fix. Each of the three attempted fixes moved the
+attack one hop earlier instead of removing it.
+
+**Status: open, root cause identified, awaiting a decision on the credential model.** Nothing
+in this ADR, the README, or the code may describe the Strava hijack as closed. What the three
+commits *did* achieve is real and worth keeping: the harvested-consent-URL variant is dead
+(nonce cookie), the flow is no longer a drive-by GET, an already-linked athlete cannot be
+silently re-attached, and `Referrer-Policy: no-referrer` keeps keys out of referrers.
+
+The decision to be made is about ADR-0003's central choice — a bearer credential in a
+shareable URL, auto-adopted on arrival. Options are recorded in
+`.superpowers/sdd/progress.md`; whichever is chosen should be written up here as its own
+amendment, since it revises this ADR's foundation rather than an edge of it.

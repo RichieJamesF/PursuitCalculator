@@ -54,7 +54,8 @@ function confirmPage({ riderName, eventName, code, rider, key, nonce }) {
 .btn{display:inline-block;padding:.7em 1.4em;background:#fc4c02;color:#fff;border:0;border-radius:.4em;font-size:1em}
 .cancel{margin-left:1em;color:#666}</style></head><body>
 <h1>Link a Strava account</h1>
-<p>This will link a Strava account to <strong>${riderT}</strong> in <strong>${eventT}</strong>. Only continue if that's you.</p>
+<p>This will link a Strava account to <strong>${riderT}</strong> in <strong>${eventT}</strong>.</p>
+<p>Only continue if you tapped "Link Strava" on your own rider page just now. If you got here from a link someone sent you, stop and close this page.</p>
 <form method="post" action="/auth/strava">
 <input type="hidden" name="code" value="${codeA}">
 <input type="hidden" name="rider" value="${riderA}">
@@ -77,6 +78,9 @@ router.get("/auth/strava", asyncRoute(async (req, res) => {
   // without `trust proxy` set. Unconditional `secure: true` would silently drop the cookie
   // (and break the flow) under local HTTP dev.
   res.cookie(NONCE_COOKIE, nonce, { httpOnly: true, sameSite: "lax", path: NONCE_COOKIE_PATH, maxAge: NONCE_MAX_AGE_MS, secure: baseUrl(req).startsWith("https:") });
+  // The rendered form carries the rider's bearer key in a hidden field — the static
+  // middleware's no-cache header doesn't reach router responses, so this one sets its own.
+  res.setHeader("Cache-Control", "no-store");
   res.type("html").send(confirmPage({ riderName: r.name, eventName: ev.name, code, rider, key, nonce }));
 }));
 
