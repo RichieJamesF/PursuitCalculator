@@ -8,8 +8,8 @@ to converge into one bunch.
 
 **Refine**:
 The action of updating a rider's FTP directly from their linked Strava ride's power
-data — a real, sustained hard effort read from the athlete, subject to a minimum-duration
-guard. Triggerable by the rider themselves (via their [rider key](#language)) or by the
+data — a real, sustained effort of at least 20 minutes (`MIN_EFFORT_SECONDS`).
+Triggerable by the rider themselves (via their [rider key](#language)) or by the
 organiser on their behalf. See [ADR-0001](docs/adr/0001-strava-refinement-ftp-only.md).
 _Avoid_: Calibrate, Use time (removed mode)
 

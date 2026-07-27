@@ -48,11 +48,18 @@ Run locally: `npm install`, set the vars in a `.env` (or your shell), point
   to edit the event (there are no passwords). Anyone with the key can organise.
 - **Share the sign-up link** (`/?code=EVENT&signup=1`). Riders add name, weight,
   FTP, bike/position and build.
-- **Set the course** (distance + ascent) and a **group size**, then **Suggest**.
-- **Strava**: each rider taps *Link Strava*; after a ride, *Refine* finds their
-  most recent ride near the course distance and nudges their calibration so
-  future predictions match their real form. Refinement is smoothed, so one odd
-  ride won't swing it.
+- **Set the course** (drop a GPX/FIT, or type distance + ascent) and a **group size**,
+  then **Suggest**. The physics assumptions are fixed and not tunable per event
+  (see `docs/adr/0002-drop-per-event-physics-tuning.md`).
+- **Riders manage themselves**: each rider gets their own link and key at sign-up
+  (shown once, remembered on that device). From it they can fix their weight, FTP,
+  bike and build, link Strava, set their FTP from a ride, and see their group and
+  roll-off time — none of it routed through the organiser.
+- **Strava**: linking is per rider. "Set FTP from Strava" offers the rider's hardest
+  recent qualifying effort — power data present, at least 20 minutes long — and states
+  the exact FTP it will set. Rides that are too short or have no power are listed but
+  can't be used. There is no time-based calibration; see
+  `docs/adr/0001-strava-refinement-ftp-only.md`.
 - **CSV / Print** for the race-day sheet.
 
 ## API
@@ -61,17 +68,20 @@ Run locally: `npm install`, set the vars in a `.env` (or your shell), point
 POST   /api/events                     {name, code?}      -> event + organiserToken
 GET    /api/events/:code                                  -> event, riders, groups, sheet
 PATCH  /api/events/:code               (org)  {name?, groupSize?, firstStart?, courseManual?, course?, params?}
-POST   /api/events/:code/riders               {name,w,ftp,pos,build}   public sign-up
-PATCH  /api/riders/:id                 (org)
-DELETE /api/riders/:id                 (org)
+POST   /api/events/:code/riders                {name,w,ftp,pos,build}  public sign-up -> rider + riderKey
+PATCH  /api/riders/:id                 (org | self)
+DELETE /api/riders/:id                 (org | self)
 POST   /api/events/:code/suggest       (org)  {size?}     compute + store groups
 PUT    /api/events/:code/groups        (org)  {groups}    save a manual arrangement
-GET    /auth/strava?code=&rider=                          start OAuth
+GET    /auth/strava?code=&rider=&key=                     start OAuth (key = organiser or rider key)
 GET    /auth/strava/callback                              store tokens
-POST   /api/riders/:id/refine          (org)              Strava -> calibration
+GET    /api/riders/:id/rides           (org | self)       recent rides, hardest usable effort first
+POST   /api/riders/:id/refine          (org | self)  {activityId?}   set FTP from a ride's power
 ```
 
-Organiser routes require the `x-organiser-token` header.
+Organiser routes require the `x-organiser-token` header. Rider routes accept either
+that or the rider's own `x-rider-token`. `/auth/strava` is a browser navigation and
+so takes the key as a `key=` query param instead of a header.
 
 ## Testing
 
@@ -86,22 +96,41 @@ Organiser routes require the `x-organiser-token` header.
 
 ## Honest status
 
-The **engine, start-sheet seeding, calibration maths, and the browser GPX
-parser are tested** (headless). The **`.fit` parser is tested for its error
-path** (rejects a file with no GPS records) but not against a real device
-file. The **organiser UI's group-edit operations** (swap, move, lock,
-suggest — `public/grouping.js`) run client-side and are exercised manually,
-but have no automated test coverage yet. The **API routes are exercised
-end-to-end against a real Postgres** via `npm run test:integration`: event
-create/fetch/patch (incl. the duplicate-code 409 case), rider CRUD, group
-suggest/save, and the organiser-token auth check on every protected route.
-One case from the original plan isn't tested — `POST /api/events/:code/suggest`
-"requires a course first" — because every event gets a default course on
-creation, so that guard is currently unreachable via the public API; see the
-comment in `tests/integration/groups.test.mjs`. The **Strava OAuth
-round-trip still needs your live config** and hasn't been exercised
-end-to-end here — stand it up on Railway with a Postgres plugin and a
-Strava app to try that part of the loop.
+The **engine, grouping, start-sheet seeding, the Strava ride model (FTP
+eligibility and suggestion picking), and the browser GPX parser are unit
+tested** (headless). The **`.fit` parser is tested for its error path**
+(rejects a file with no GPS records) but not against a real device file.
+The **organiser UI's group-edit operations** (swap, move, lock, suggest —
+`public/grouping.js`) run client-side and are exercised manually, but have
+no automated test coverage yet. **Events, riders, groups and the Strava
+auth checks have integration tests** against a real Postgres
+(`embedded-postgres`, no Docker — `npm run test:integration`): event
+create/fetch/patch (incl. the duplicate-code 409 case), rider CRUD under
+organiser-or-self auth, group suggest/save, and the `/auth/strava` key
+checks (missing/empty/wrong/cross-rider/cross-event key, plus a signed-state
+round-trip). One case from the original plan isn't tested —
+`POST /api/events/:code/suggest` "requires a course first" — because every
+event gets a default course on creation, so that guard is currently
+unreachable via the public API; see the comment in
+`tests/integration/groups.test.mjs`. What automated tests can't cover is the
+live Strava round-trip itself — OAuth against a real account and reading
+power off real activities — so verify that by hand with `STRAVA_CLIENT_ID`,
+`STRAVA_CLIENT_SECRET` and `BASE_URL` set.
+
+**Known open issue: Strava linking can be redirected to the wrong rider.**
+Signing the OAuth `state` (see `docs/adr/0003-rider-self-service-via-rider-key.md`)
+ties a consent flow to a
+specific rider, but not to the browser that started it. Someone can sign up
+their own rider on an event they created, generate a valid Strava consent
+link for that rider, and hand it to someone else — if that person approves
+it under their own Strava account, the tokens (and so the ride history) land
+on the sender's rider row, not the approver's. The 15-minute expiry on
+`state` doesn't help, since a fresh one can be minted per target. Closing
+this properly means binding `state` to the browser that started the flow,
+which needs a cookie, and
+`docs/adr/0003-rider-self-service-via-rider-key.md` deliberately says not to
+add cookies without revisiting that decision. So this is left as an open
+decision for the repo owner, not an oversight.
 
 The organiser UI now matches the standalone app: tap a rider then another to
 swap, "+ here" to move between groups, lock/break groups, an unassigned bench,
