@@ -40,19 +40,46 @@ async function freshAccess(r) {
   }
   return access;
 }
-const RIDE_TYPES = new Set(["Ride", "GravelRide", "VirtualRide", "MountainBikeRide", "EBikeRide"]);
-const isRide = (a) => RIDE_TYPES.has(a.sport_type) || a.type === "Ride";
+// A ride must last at least this long for its power to stand in for an FTP —
+// below it a short hard surge reads as a far higher FTP than the rider holds.
+export const MIN_EFFORT_SECONDS = 1200;
 
-function normalizeRide(a, courseM, rider, segments, params) {
-  const matches = courseM ? Math.abs(a.distance - courseM) / courseM <= 0.08 : false;
-  const weighted = a.device_watts ? a.weighted_average_watts : null;
+const RIDE_TYPES = new Set(["Ride", "GravelRide", "VirtualRide", "MountainBikeRide", "EBikeRide"]);
+export const isRide = (a) => RIDE_TYPES.has(a.sport_type) || a.type === "Ride";
+
+// Weighted (normalised) power off a real meter is the best FTP stand-in; a bare
+// average — including Strava's estimate for riders with no meter — is the fallback.
+export function rideFtpWatts(a) {
+  const w = a.device_watts ? (a.weighted_average_watts ?? a.average_watts) : a.average_watts;
+  return w == null ? null : Math.round(w);
+}
+
+export function normalizeRide(a) {
+  const ftpEstimate = rideFtpWatts(a);
+  const movingTime = a.moving_time || 0;
+  const longEnough = movingTime >= MIN_EFFORT_SECONDS;
   return {
-    id: a.id, name: a.name, date: a.start_date, distanceKm: +(a.distance / 1000).toFixed(1),
-    movingTime: a.moving_time, avgSpeedKmh: +((a.average_speed || 0) * 3.6).toFixed(1),
-    avgWatts: a.average_watts != null ? Math.round(a.average_watts) : null,
-    weightedWatts: weighted != null ? Math.round(weighted) : null,
-    hasPower: !!a.device_watts, commute: !!a.commute, matches,
+    id: a.id, name: a.name, date: a.start_date,
+    distanceKm: +((a.distance || 0) / 1000).toFixed(1),
+    movingTime,
+    avgSpeedKmh: +((a.average_speed || 0) * 3.6).toFixed(1),
+    ftpEstimate, hasPower: !!a.device_watts, commute: !!a.commute,
+    longEnough, eligible: ftpEstimate != null && longEnough,
   };
+}
+
+// The one ride offered up as "your hardest recent effort". The auto-refine uses the
+// same function, so the ride the rider is shown is always the ride that gets applied.
+export function pickSuggested(rides) {
+  return rides.filter((r) => r.eligible && !r.commute)
+    .sort((a, b) => b.ftpEstimate - a.ftpEstimate)[0] || null;
+}
+
+export function sortRides(rides) {
+  const rank = (r) => (r.eligible && !r.commute ? 0 : 1);
+  return [...rides].sort((a, b) =>
+    rank(a) - rank(b) ||
+    (rank(a) === 0 ? b.ftpEstimate - a.ftpEstimate : new Date(b.date) - new Date(a.date)));
 }
 
 // list a rider's recent rides so the organiser can choose which to calibrate from
