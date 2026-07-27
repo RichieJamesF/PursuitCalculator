@@ -6,6 +6,19 @@ import { verifyState } from "../../lib/strava.mjs";
 const ORIGINAL_CLIENT_ID = process.env.STRAVA_CLIENT_ID;
 const ORIGINAL_CLIENT_SECRET = process.env.STRAVA_CLIENT_SECRET;
 
+function restoreStrava() {
+  if (ORIGINAL_CLIENT_ID === undefined) {
+    delete process.env.STRAVA_CLIENT_ID;
+  } else {
+    process.env.STRAVA_CLIENT_ID = ORIGINAL_CLIENT_ID;
+  }
+  if (ORIGINAL_CLIENT_SECRET === undefined) {
+    delete process.env.STRAVA_CLIENT_SECRET;
+  } else {
+    process.env.STRAVA_CLIENT_SECRET = ORIGINAL_CLIENT_SECRET;
+  }
+}
+
 async function seed(baseUrl, code) {
   const ev = await fetch(`${baseUrl}/api/events`, {
     method: "POST", headers: { "Content-Type": "application/json" },
@@ -82,8 +95,7 @@ describe("strava routes", () => {
       assert.equal(payload.code, "sv-ok");
       assert.equal(payload.rider, Number(rider.id));
     } finally {
-      process.env.STRAVA_CLIENT_ID = ORIGINAL_CLIENT_ID;
-      process.env.STRAVA_CLIENT_SECRET = ORIGINAL_CLIENT_SECRET;
+      restoreStrava();
     }
   });
 

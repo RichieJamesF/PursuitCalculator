@@ -15,7 +15,7 @@ router.get("/auth/strava", asyncRoute(async (req, res) => {
   if (!ev || !r || ev.code !== String(code)) return res.status(404).send("No such rider in that event.");
   const allowed = key === ev.organiser_token || (r.rider_token && key === r.rider_token);
   if (!allowed) return res.status(403).send("That key doesn't grant access to this rider.");
-  if (!process.env.STRAVA_CLIENT_ID) return res.status(500).send("Strava is not configured on this server.");
+  if (!process.env.STRAVA_CLIENT_ID || !process.env.STRAVA_CLIENT_SECRET) return res.status(500).send("Strava is not configured on this server.");
   const state = signState({ code, rider: Number(rider), ts: Date.now() });
   res.redirect(authUrl(state, `${baseUrl(req)}/auth/strava/callback`));
 }));
