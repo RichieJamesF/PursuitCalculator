@@ -1,6 +1,6 @@
 import express from "express";
 import { q } from "../db.js";
-import { eventForRider, requireOrg, paramsOf, baseUrl, engineRider, asyncRoute } from "./helpers.js";
+import { eventForRider, requireOrg, baseUrl, asyncRoute } from "./helpers.js";
 import { authUrl, exchange, refresh, recentActivities, activity } from "../lib/strava.mjs";
 
 const router = express.Router();
@@ -82,7 +82,7 @@ export function sortRides(rides) {
     (rank(a) === 0 ? b.ftpEstimate - a.ftpEstimate : new Date(b.date) - new Date(a.date)));
 }
 
-// list a rider's recent rides so the organiser can choose which to calibrate from
+// list a rider's recent rides, hardest usable effort first
 router.get("/api/riders/:id/rides", asyncRoute(async (req, res) => {
   const ev = await eventForRider(req.params.id);
   if (!requireOrg(ev, req, res)) return;
@@ -92,49 +92,41 @@ router.get("/api/riders/:id/rides", asyncRoute(async (req, res) => {
   try {
     const access = await freshAccess(r);
     const acts = await recentActivities(access, 50);
-    const courseM = ev.course_json?.distanceM, segs = ev.course_json?.segments;
-    const rider = engineRider(r);
     const cutoff = Date.now() - 42 * 864e5;
-    const rides = acts
+    const rides = sortRides(acts
       .filter((a) => isRide(a) && new Date(a.start_date).getTime() >= cutoff)
-      .map((a) => normalizeRide(a, courseM, rider, segs, paramsOf(ev)))
-      .sort((a, b) => (b.matches - a.matches) || (a.commute - b.commute) || (a.movingTime - b.movingTime));
-    res.json({ rides, course: { distanceKm: courseM ? +(courseM / 1000).toFixed(1) : null } });
+      .map(normalizeRide));
+    const suggested = pickSuggested(rides);
+    res.json({ rides, suggestedId: suggested?.id ?? null, minMinutes: MIN_EFFORT_SECONDS / 60 });
   } catch (e) { console.error(e); res.status(502).json({ error: "Strava request failed — try again." }); }
 }));
 
-// refine a rider. Body: { activityId?, mode? }  mode = "course" (time on course) | "power" (FTP from watts).
-// No activityId → auto-pick the fastest recent non-commute ride matching the course distance.
+// Set a rider's FTP from a Strava ride's power. Body: { activityId? } — omit it to
+// use the suggested ride (the hardest recent qualifying effort).
 router.post("/api/riders/:id/refine", asyncRoute(async (req, res) => {
   const ev = await eventForRider(req.params.id);
   if (!requireOrg(ev, req, res)) return;
   const { rows } = await q("SELECT * FROM riders WHERE id=$1", [req.params.id]);
   const r = rows[0];
   if (!r?.strava_access_token) return res.status(400).json({ error: "This rider hasn't linked Strava yet." });
-  const mode = req.body?.mode === "power" ? "power" : "course";
-  const activityId = req.body?.activityId || null;
-  if (mode === "course" && !ev.course_json) return res.status(400).json({ error: "Set a course first." });
   try {
     const access = await freshAccess(r);
     let act;
-    if (activityId) {
-      act = await activity(access, activityId);
+    if (req.body?.activityId) {
+      act = await activity(access, req.body.activityId);
     } else {
       const acts = await recentActivities(access, 50);
-      const courseM = ev.course_json?.distanceM;
       const cutoff = Date.now() - 42 * 864e5;
-      act = acts.filter((a) => isRide(a) && !a.commute && new Date(a.start_date).getTime() >= cutoff && courseM && Math.abs(a.distance - courseM) / courseM <= 0.08)
-        .sort((a, b) => a.moving_time - b.moving_time)[0];
-      if (!act) return res.json({ matched: false, message: "No recent non-commute ride close to the course distance — pick one manually." });
+      const fresh = acts.filter((a) => isRide(a) && new Date(a.start_date).getTime() >= cutoff);
+      const best = pickSuggested(fresh.map(normalizeRide));
+      if (!best) return res.json({ matched: false, message: `No ride in the last 6 weeks has power data and lasts ${MIN_EFFORT_SECONDS / 60} minutes or more. Pick a ride yourself, or ask your organiser to type your FTP in.` });
+      act = fresh.find((a) => String(a.id) === String(best.id));
     }
-    if (mode === "power") {
-      const watts = (act.device_watts ? act.weighted_average_watts : act.average_watts) || act.average_watts;
-      if (!watts) return res.status(400).json({ error: "That ride has no power data to read an FTP from." });
-      const ftp = Math.round(watts);
-      await q("UPDATE riders SET ftp=$1, calib=1, last_refined_at=now() WHERE id=$2", [ftp, r.id]);
-      return res.json({ matched: true, mode: "power", activity: act.name, ftp, hadPower: !!act.device_watts });
-    }
-    return res.json({ matched: false, message: "Calibrating from a ride's time has been retired — use FTP from power instead." });
+    const ftp = rideFtpWatts(act);
+    if (ftp == null) return res.status(400).json({ error: "That ride has no power data to read an FTP from." });
+    if ((act.moving_time || 0) < MIN_EFFORT_SECONDS) return res.status(400).json({ error: `That ride is under ${MIN_EFFORT_SECONDS / 60} minutes — too short to read an FTP from. Pick a longer, harder effort.` });
+    await q("UPDATE riders SET ftp=$1, calib=1, last_refined_at=now() WHERE id=$2", [ftp, r.id]);
+    res.json({ matched: true, activity: act.name, ftp, hadPower: !!act.device_watts, movingTime: act.moving_time });
   } catch (e) {
     console.error(e); res.status(502).json({ error: "Strava request failed — try again." });
   }
