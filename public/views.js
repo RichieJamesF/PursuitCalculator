@@ -21,7 +21,7 @@ export function render() {
     </div>
     ${state.banner ? `<div class="banner">${esc(state.banner)}</div>` : ""}
     <div class="grid"><div class="col" id="left"></div><div class="col" id="right"></div></div>
-    <div class="foot">Theoretical times — a planning aid, not a promise. Tune the assumptions to your roads and riders.</div>`;
+    <div class="foot">Theoretical times — a planning aid, not a promise.</div>`;
   const left = document.getElementById("left"), right = document.getElementById("right");
 
   // Event summary (create/open now happen on the landing screen)
@@ -307,8 +307,8 @@ function renderSignup() {
     <label class="f">Event code<input id="code" value="${esc(state.code)}"/></label>
     <label class="f">Name<input id="name" placeholder="Your name"/></label>
     <div class="two"><label class="f">Weight (kg)<input type="number" id="w" value="75"/></label><label class="f">FTP (W)<input type="number" id="ftp" value="240"/></label></div>
-    <div class="two"><label class="f">Bike / position<select id="pos">${Object.entries(POSITIONS).map(([k, v]) => `<option value="${k}">${v}</option>`).join("")}</select></label>
-      <label class="f">Build<select id="build">${Object.entries(BUILDS).map(([k, v]) => `<option value="${k}">${v}</option>`).join("")}</select></label></div>
+    <div class="two"><label class="f">Bike / position<select id="pos">${Object.entries(POSITIONS).map(([k, v]) => `<option value="${k}" ${k === "road_drops" ? "selected" : ""}>${v}</option>`).join("")}</select></label>
+      <label class="f">Build<select id="build">${Object.entries(BUILDS).map(([k, v]) => `<option value="${k}" ${k === "medium" ? "selected" : ""}>${v}</option>`).join("")}</select></label></div>
     <p class="micro">Not sure of your FTP? Your best hour-power guess is fine.</p>
     <button class="btn block" id="send">Send to organiser</button><p class="hint" id="status"></p></div>`;
   document.getElementById("send").onclick = async () => {
