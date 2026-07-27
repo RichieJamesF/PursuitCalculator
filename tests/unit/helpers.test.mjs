@@ -62,9 +62,12 @@ test("requireRiderOrOrg rejects another rider's key with 403", () => {
   assert.equal(res.code, 403);
 });
 
-test("requireRiderOrOrg rejects a rider with no key stored, even if the header is empty too", () => {
+test("requireRiderOrOrg rejects a rider with no key stored, even if the header is the literal string 'null'", () => {
+  // Defence-in-depth: strict equality (own === rider.rider_token) plus existence checks
+  // (own && rider.rider_token &&). The literal string "null" passes the truthy check but
+  // will not equal null, so this test pins the existence guard working independently.
   const res = fakeRes();
-  const ok = requireRiderOrOrg({ organiser_token: "org1" }, { rider_token: null }, fakeReq({ "x-rider-token": "" }), res);
+  const ok = requireRiderOrOrg({ organiser_token: "org1" }, { rider_token: null }, fakeReq({ "x-rider-token": "null" }), res);
   assert.equal(ok, false);
   assert.equal(res.code, 403);
 });
@@ -77,4 +80,18 @@ test("requireRiderOrOrg 404s a missing event or missing rider", () => {
   const noRider = fakeRes();
   assert.equal(requireRiderOrOrg({ organiser_token: "o" }, null, fakeReq({}), noRider), false);
   assert.equal(noRider.code, 404);
+});
+
+test("requireRiderOrOrg rejects a wrong organiser token with 403", () => {
+  const res = fakeRes();
+  const ok = requireRiderOrOrg({ organiser_token: "org1" }, { rider_token: "rid1" }, fakeReq({ "x-organiser-token": "wrong" }), res);
+  assert.equal(ok, false);
+  assert.equal(res.code, 403);
+});
+
+test("requireRiderOrOrg rejects a missing organiser token even when event and rider exist", () => {
+  const res = fakeRes();
+  const ok = requireRiderOrOrg({ organiser_token: "org1" }, { rider_token: "rid1" }, fakeReq({}), res);
+  assert.equal(ok, false);
+  assert.equal(res.code, 403);
 });

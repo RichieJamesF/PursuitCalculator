@@ -27,7 +27,13 @@ export async function getRiders(eventId) {
   return rows;
 }
 
-const isNumericId = (v) => /^\d+$/.test(String(v));
+const isNumericId = (v) => {
+  const s = String(v);
+  if (!/^\d+$/.test(s)) return false;
+  // Reject values outside int4 range to avoid Postgres "value out of range" errors
+  const n = BigInt(s);
+  return n >= 0n && n <= 2147483647n;
+};
 
 export async function eventForRider(riderId) {
   if (!isNumericId(riderId)) return null;
@@ -59,8 +65,8 @@ export function requireOrg(ev, req, res) {
 // Either the event's organiser or the rider themselves. Same self-reporting
 // contract as requireOrg: writes the error response and returns false.
 export function requireRiderOrOrg(ev, rider, req, res) {
-  if (!ev) { res.status(404).json({ error: "No event with that code." }); return false; }
   if (!rider) { res.status(404).json({ error: "No such rider." }); return false; }
+  if (!ev) { res.status(404).json({ error: "No event with that code." }); return false; }
   const org = req.get("x-organiser-token");
   if (org && org === ev.organiser_token) return true;
   const own = req.get("x-rider-token");

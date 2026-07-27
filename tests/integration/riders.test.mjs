@@ -162,11 +162,23 @@ describe("riders routes", () => {
     assert.equal(check.riders.length, 0);
   });
 
-  test("PATCH /api/riders/:id with a non-numeric id 404s instead of erroring", async () => {
+  test("PATCH /api/riders/:id with a non-numeric id 404s with a sensible message", async () => {
     const res = await fetch(`${ctx.baseUrl}/api/riders/not-an-id`, {
       method: "PATCH", headers: { "Content-Type": "application/json", "x-rider-token": "whatever" },
       body: JSON.stringify({ name: "x" }),
     });
     assert.equal(res.status, 404);
+    const body = await res.json();
+    assert.equal(body.error, "No such rider.");
+  });
+
+  test("PATCH /api/riders/:id with an out-of-int4-range id 404s instead of erroring", async () => {
+    const res = await fetch(`${ctx.baseUrl}/api/riders/99999999999999999999`, {
+      method: "PATCH", headers: { "Content-Type": "application/json", "x-rider-token": "whatever" },
+      body: JSON.stringify({ name: "x" }),
+    });
+    assert.equal(res.status, 404);
+    const body = await res.json();
+    assert.equal(body.error, "No such rider.");
   });
 });
