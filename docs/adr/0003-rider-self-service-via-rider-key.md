@@ -156,5 +156,12 @@ silently re-attached, and `Referrer-Policy: no-referrer` keeps keys out of refer
 
 The decision to be made is about ADR-0003's central choice — a bearer credential in a
 shareable URL, auto-adopted on arrival. Options are recorded in
-`.superpowers/sdd/progress.md`; whichever is chosen should be written up here as its own
-amendment, since it revises this ADR's foundation rather than an edge of it.
+[the execution ledger](../execution/progress-ledger.md); whichever is chosen should be written
+up here as its own amendment, since it revises this ADR's foundation rather than an edge of it.
+
+**Resolved by removal.** [ADR-0004](0004-remove-strava-entirely.md) dropped Strava altogether,
+so this particular decision is void — there are no third-party tokens to steal. The underlying
+observation stands and is worth remembering if the credential model is ever revisited: a rider
+key in a URL is auto-adopted as that browser's identity, so a link can put someone into another
+rider's session. With Strava gone the worst that grants is editing a rider's weight or FTP on a
+club start sheet.
