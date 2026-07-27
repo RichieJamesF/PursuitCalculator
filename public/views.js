@@ -1,7 +1,7 @@
 import { cdaOf } from "/engine.mjs";
 import { state, app, POSITIONS, BUILDS, SHADES, el, ridersById, LS } from "./state.js";
 import { esc, fmtDur, fmtGap, addClock } from "./format.js";
-import { toLanding, detailsMailto, copyDetails, createEvent, openExisting, patchEvent, addRider, updRider, delRider, openRidePicker, autoRefine, applyRefine, origin } from "./actions.js";
+import { toLanding, detailsMailto, copyDetails, createEvent, openExisting, patchEvent, addRider, updRider, delRider, openRidePicker, autoRefine, applyRefine, origin, signUp, riderLink, riderMailto, copyRiderDetails, openRiderPage } from "./actions.js";
 import { api, savedEvents } from "./api.js";
 import { suggestLocal, clearGroups, newGroup, moveTo, toggleLock, breakGroup, goSolo, joinBest, onPick, localSheet, exportCSV } from "./grouping.js";
 import { parseCourseFile } from "./course.js";
@@ -301,6 +301,7 @@ function renderCreated() {
 
 /* ---- rider self sign-up -------------------------------------------------- */
 function renderSignup() {
+  if (state.justSignedUp) return renderSignedUp();
   app.innerHTML = `<div class="center">
     <a class="ghost" href="/?code=${encodeURIComponent(state.code)}" style="align-self:flex-start">‹ Organiser view</a>
     <span class="kicker">Rider sign-up</span><h1 class="su-title">ADD YOUR DETAILS</h1>
@@ -309,7 +310,7 @@ function renderSignup() {
     <div class="two"><label class="f">Weight (kg)<input type="number" id="w" value="75"/></label><label class="f">FTP (W)<input type="number" id="ftp" value="240"/></label></div>
     <div class="two"><label class="f">Bike / position<select id="pos">${Object.entries(POSITIONS).map(([k, v]) => `<option value="${k}" ${k === "road_drops" ? "selected" : ""}>${v}</option>`).join("")}</select></label>
       <label class="f">Build<select id="build">${Object.entries(BUILDS).map(([k, v]) => `<option value="${k}" ${k === "medium" ? "selected" : ""}>${v}</option>`).join("")}</select></label></div>
-    <p class="micro">Not sure of your FTP? Your best hour-power guess is fine.</p>
+    <p class="micro">Not sure of your FTP? Your best hour-power guess is fine — you can fix it later, or read it off a Strava ride.</p>
     <button class="btn block" id="send">Send to organiser</button><p class="hint" id="status"></p></div>`;
   document.getElementById("send").onclick = async () => {
     const code = document.getElementById("code").value.trim().toLowerCase();
@@ -317,7 +318,27 @@ function renderSignup() {
     const status = document.getElementById("status");
     if (!body.name.trim()) { status.textContent = "Add your name first."; return; }
     status.textContent = "Sending…";
-    try { await api("/events/" + encodeURIComponent(code) + "/riders", "POST", body); status.textContent = `Thanks ${body.name} — you're in. You can close this.`; }
+    try { await signUp(code, body); }
     catch (e) { status.textContent = e.message; }
   };
+}
+
+function renderSignedUp() {
+  const { name, id, code, key } = state.justSignedUp;
+  app.innerHTML = `<div class="landing"><div class="rule"></div>
+    <div class="land-head"><span class="kicker" style="color:#1f7a4d">You're in</span><h1>${esc(name)}</h1></div>
+    <div class="rule"></div>
+    ${state.banner ? `<div class="banner">${esc(state.banner)}</div>` : ""}
+    <div class="created">
+      <p class="hint">This link is yours. Open it any time to change your details, link Strava, or set your FTP from a ride — no need to bother the organiser.</p>
+      <div class="cr-field"><span>Your rider page</span><input readonly value="${riderLink(code, id, key)}"/></div>
+      <div class="row" style="margin:6px 0 4px"><a class="btn" id="email">✉ Email me my link</a><button class="add" id="copy">Copy my link</button></div>
+      <p class="micro">This device will remember you automatically. Save the link if you might use a different phone or computer — there's no way to look it up later.</p>
+      <button class="btn block" id="go" style="margin-top:12px">Open my rider page ›</button>
+    </div>
+    <p class="land-foot">Your organiser can see you in the rider list now.</p>
+  </div>`;
+  document.getElementById("email").href = riderMailto(name, code, id, key);
+  document.getElementById("copy").onclick = () => copyRiderDetails(name, code, id, key);
+  document.getElementById("go").onclick = openRiderPage;
 }

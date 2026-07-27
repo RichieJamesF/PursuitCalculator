@@ -1,4 +1,4 @@
-import { state, LS } from "./state.js";
+import { state, LS, riderKeyLS } from "./state.js";
 import { api, loadEvent, syncWork } from "./api.js";
 import { render } from "./views.js";
 
@@ -66,4 +66,41 @@ export async function autoRefine(id) {
   state.ridePicker = null; state.banner = "Finding your fastest effort on the course…"; render();
   try { const r = await api("/riders/" + id + "/refine", "POST", { mode: "course" }, true); state.banner = bannerFromRefine(r); await loadEvent(); }
   catch (e) { state.banner = e.message; render(); }
+}
+
+export const riderLink = (code, id, key) =>
+  `${origin()}/?code=${encodeURIComponent(code)}&rider=${id}&key=${encodeURIComponent(key)}`;
+
+export function riderMailto(name, code, id, key) {
+  const body = `Your rider link for this Pursuit event — open it any time to change your weight, FTP or bike, link Strava, or update your FTP from a ride.\n\n`
+    + `Rider: ${name}\nEvent code: ${code}\nYour rider key: ${key}\n\n`
+    + `Your rider page: ${riderLink(code, id, key)}\n\n`
+    + `Keep this link. It's the only way back in from another device.\n`;
+  return `mailto:?subject=${encodeURIComponent(`My Pursuit rider link (${code})`)}&body=${encodeURIComponent(body)}`;
+}
+
+export function copyRiderDetails(name, code, id, key) {
+  const text = `Pursuit rider: ${name}\nEvent: ${code}\nRider key: ${key}\nMy rider page: ${riderLink(code, id, key)}`;
+  navigator.clipboard?.writeText(text);
+  state.banner = "Your rider link is copied — paste it somewhere safe.";
+  render();
+}
+
+export async function signUp(code, body) {
+  const r = await api("/events/" + encodeURIComponent(code) + "/riders", "POST", body);
+  state.code = code;
+  state.riderId = r.id;
+  state.riderKey = r.riderKey;
+  LS.setItem(riderKeyLS(code, r.id), r.riderKey);
+  LS.setItem("pursuit:lastCode", code);
+  state.justSignedUp = { name: r.name, id: r.id, code, key: r.riderKey };
+  render();
+}
+
+export function openRiderPage() {
+  state.signup = false;
+  state.justSignedUp = null;
+  state.mode = "rider";
+  state.banner = "";
+  loadEvent();
 }
