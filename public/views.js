@@ -107,7 +107,7 @@ function ridePickerEl() {
     const card = el(`<div class="ridecard ${rd.eligible ? "" : "dim"}">
       <div class="ride-main"><b>${esc(rd.name)}</b>
         <span class="ride-sub">${shortDate(rd.date)} · ${rd.distanceKm} km · ${fmtDur(rd.movingTime)} · ${powerLabel(rd)}</span></div>
-      <div class="ride-tags">${rd.commute ? `<span class="tg tg-com">commute</span>` : ""}${rd.hasPower ? `<span class="tg tg-pow">power meter</span>` : ""}${reason ? `<span class="tg">${esc(reason)}</span>` : ""}</div>
+      <div class="ride-tags">${rd.commute ? `<span class="tg tg-com">commute</span>` : ""}${rd.hasPower ? `<span class="tg tg-pow">power meter</span>` : ""}${reason ? `<span class="tg tg-reason">${esc(reason)}</span>` : ""}</div>
       <div class="ride-acts"><button class="add use" ${rd.eligible ? "" : "disabled"} title="${rd.eligible ? `Set FTP to ${rd.ftpEstimate} W` : `Can't use this ride — ${reason}`}">${rd.eligible ? `Use · ${rd.ftpEstimate} W` : "Can't use"}</button></div></div>`);
     const btn = card.querySelector(".use");
     if (rd.eligible) btn.onclick = () => applyRefine(riderId, rd.id, auth);
