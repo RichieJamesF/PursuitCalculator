@@ -89,3 +89,37 @@ the original rule stands and must be revisited on its own terms.
   the request header.
 - Under UK/EU rules this is a strictly-necessary security cookie with no tracking, so it needs
   no consent banner.
+
+### Follow-up: the cookie alone was not sufficient
+
+Review of the implementation found the nonce closes only one of the two routes to the same
+outcome. It stops an attacker harvesting a signed `state` and passing the *strava.com* consent
+URL to a victim. It does not stop the attacker passing the victim **this app's own**
+`/auth/strava?code=…&rider=…&key=…` URL instead: the victim's browser then performs both legs
+itself, so it mints the nonce, holds the matching cookie, and the callback check passes
+honestly — while the rider the tokens land on is still whichever one the attacker named in the
+query string. Binding the flow to a browser cannot help when the browser is the victim's and
+the rider is chosen by a bearer key in the URL.
+
+The real defect is that `GET /auth/strava` performs a state-changing action, authorised solely
+by a URL-borne key, with nothing shown to the person whose account is about to be linked.
+
+**Additional decision.** `GET /auth/strava` no longer redirects to Strava. It authenticates as
+before, then renders a confirmation page on this app's own origin naming the rider and the
+event — "Link a Strava account to **Bex** in **Tuesday 10**?" — with a form that `POST`s back
+to `/auth/strava`. Only the POST mints the state and redirects to Strava. The nonce cookie is
+set when the confirmation page is rendered and its value is also embedded in the form, so the
+POST is a double-submit check as well as the callback binding; `SameSite=Lax` independently
+blocks a cross-site auto-POST, so an attacker cannot skip the page.
+
+A victim sent the attacker's link now sees a rider name that is not theirs *before* anything
+happens, on this app's domain, in this app's wording. That is the control that actually closes
+it; the nonce remains necessary for the second leg.
+
+**Consequences.**
+- One extra click for every rider linking Strava. Judged worth it, and independently useful:
+  it also catches an organiser linking the wrong rider from the rider list, and a shared
+  household device.
+- `/auth/strava` is now GET (confirm) + POST (act). A bookmarked or re-sent GET is harmless.
+- The 2026-07-27 recommendation that the cookie alone closed this was wrong, and is corrected
+  here rather than quietly amended, because the earlier text is what justified the cookie.

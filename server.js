@@ -16,6 +16,9 @@ export function createApp() {
   // default would leak that whole URL cross-origin, so pin the policy explicitly.
   app.use((_req, res, next) => { res.setHeader("Referrer-Policy", "no-referrer"); next(); });
   app.use(express.json({ limit: "1mb" }));
+  // The /auth/strava confirmation page POSTs a plain HTML form (application/x-www-form-urlencoded),
+  // not JSON — express.json() alone leaves req.body empty for that request.
+  app.use(express.urlencoded({ extended: false }));
   app.use(express.static(path.join(__dirname, "public"), {
     setHeaders: (res, p) => { if (/\.(js|mjs|css|html)$/.test(p)) res.setHeader("Cache-Control", "no-cache"); },
   }));

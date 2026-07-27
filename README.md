@@ -73,7 +73,8 @@ PATCH  /api/riders/:id                 (org | self)
 DELETE /api/riders/:id                 (org | self)
 POST   /api/events/:code/suggest       (org)  {size?}     compute + store groups
 PUT    /api/events/:code/groups        (org)  {groups}    save a manual arrangement
-GET    /auth/strava?code=&rider=&key=                     start OAuth (key = organiser or rider key)
+GET    /auth/strava?code=&rider=&key=                     confirm page naming the rider + event (key = organiser or rider key)
+POST   /auth/strava                    {code,rider,key,nonce}  start OAuth once confirmed
 GET    /auth/strava/callback                              store tokens
 GET    /api/riders/:id/rides           (org | self)       recent rides, hardest usable effort first
 POST   /api/riders/:id/refine          (org | self)  {activityId?}   set FTP from a ride's power
@@ -82,7 +83,9 @@ DELETE /api/riders/:id/strava          (org | self)       unlink Strava (clears 
 
 Organiser routes require the `x-organiser-token` header. Rider routes accept either
 that or the rider's own `x-rider-token`. `/auth/strava` is a browser navigation and
-so takes the key as a `key=` query param instead of a header.
+so takes the key as a `key=` query param instead of a header. The GET only renders a
+confirmation page naming the rider and event being linked; the POST it submits to
+(same path) is what actually starts the OAuth round-trip — see "Honest status" below.
 
 ## Testing
 
@@ -108,10 +111,13 @@ auth checks have integration tests** against a real Postgres
 (`embedded-postgres`, no Docker — `npm run test:integration`): event
 create/fetch/patch (incl. the duplicate-code 409 case), rider CRUD under
 organiser-or-self auth, group suggest/save, and the `/auth/strava` key
-checks (missing/empty/wrong/cross-rider/cross-event key, a signed-state
-round-trip, and the nonce-cookie binding: no cookie, wrong cookie, and an
-old-format state with no nonce, all refused before the token exchange runs).
-One case from the original plan isn't tested —
+checks (missing/empty/wrong/cross-rider/cross-event key, the confirmation
+page rendering and escaping the rider/event names, the double-submit nonce
+check on the POST, and the nonce-cookie binding at the callback: no cookie,
+wrong cookie, and an old-format state with no nonce, all refused before the
+token exchange runs — plus a full happy-path walk of confirm page -> POST ->
+callback that asserts a token is actually written). One case from the
+original plan isn't tested —
 `POST /api/events/:code/suggest` "requires a course first" — because every
 event gets a default course on creation, so that guard is currently
 unreachable via the public API; see the comment in
@@ -120,21 +126,34 @@ live Strava round-trip itself — OAuth against a real account and reading
 power off real activities — so verify that by hand with `STRAVA_CLIENT_ID`,
 `STRAVA_CLIENT_SECRET` and `BASE_URL` set.
 
-**Strava linking is bound to the browser that started it.** Signing the
-OAuth `state` proves the server issued it, but not that the party finishing
-the flow is the party who started it — see the amendment at the bottom of
-`docs/adr/0003-rider-self-service-via-rider-key.md` for the attack this
-closes (sign up your own rider, harvest a valid consent link, hand it to a
-victim; without browser binding their tokens land on your rider row).
-`GET /auth/strava` now mints a random nonce, folds it into the signed
-`state`, and sets it as a short-lived, path-scoped, `HttpOnly`,
-`SameSite=Lax` cookie (`Secure` only when the deployment is HTTPS — Railway
-terminates TLS at a proxy, so this is derived from `baseUrl(req)`, not
-`req.secure`). The callback compares the cookie against the state's nonce
-with a timing-safe check *before* calling Strava's token exchange, so a
-refused flow never contacts Strava, then clears the cookie either way. A
-rider whose browser blocks cookies gets a distinct `stravaerror=nocookie`
-banner naming the cause rather than the generic failure message.
+**Strava linking is confirmed on this app's own page before it does anything.**
+Signing the OAuth `state` proves the server issued it, and binding it to a
+cookie proves the same browser that started the flow finished it — but neither
+stops an attacker sending a victim *this app's own* `/auth/strava?code=&rider=&key=`
+link: the victim's browser would honestly mint the nonce, hold the cookie, and
+pass the callback check, while the tokens still land on whichever rider the
+attacker named in the query string. See the amendment (and its follow-up) at
+the bottom of `docs/adr/0003-rider-self-service-via-rider-key.md` for the full
+attack and why browser-binding alone can't close it.
+
+So `GET /auth/strava` no longer redirects to Strava. It runs the same key
+checks as before, then renders a confirmation page on this app's own origin
+naming the rider and event about to be linked, with a form that `POST`s back
+to the same path. Only that POST mints the signed `state` and redirects to
+Strava — a bookmarked or re-sent GET is harmless. The GET also mints the nonce
+and sets it as a short-lived, path-scoped, `HttpOnly`, `SameSite=Lax` cookie
+(`Secure` only when the deployment is HTTPS — Railway terminates TLS at a
+proxy, so this is derived from `baseUrl(req)`, not `req.secure`), embedding the
+same value in a hidden form field. The POST re-runs the identical key checks
+(it doesn't trust that the GET ran) and compares the form nonce against the
+cookie nonce — a double-submit check — before signing `state` with that nonce.
+`SameSite=Lax` already blocks a cross-site auto-POST here; the double-submit
+compare is belt-and-braces for anything that doesn't honour `SameSite`. The
+callback then compares the cookie against the state's nonce with a
+timing-safe check *before* calling Strava's token exchange, so a refused flow
+never contacts Strava, then clears the cookie either way. A rider whose
+browser blocks cookies gets a distinct `stravaerror=nocookie` banner naming
+the cause rather than the generic failure message.
 
 The organiser UI now matches the standalone app: tap a rider then another to
 swap, "+ here" to move between groups, lock/break groups, an unassigned bench,

@@ -140,3 +140,13 @@ test("readCookie doesn't false-match a name that's a suffix of the target", () =
 test("readCookie returns null when the named cookie isn't present", () => {
   assert.equal(readCookie("a=1; b=2", "pursuit_oauth_nonce"), null);
 });
+
+test("readCookie returns the first value when a cookie name is duplicated", () => {
+  const header = "pursuit_oauth_nonce=first; pursuit_oauth_nonce=second";
+  assert.equal(readCookie(header, "pursuit_oauth_nonce"), "first");
+});
+
+test("readCookie returns an empty string for a present-but-empty cookie value", () => {
+  const header = "pursuit_oauth_nonce=; b=2";
+  assert.equal(readCookie(header, "pursuit_oauth_nonce"), "");
+});

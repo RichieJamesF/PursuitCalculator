@@ -19,23 +19,79 @@ function safeEqual(a, b) {
   return ab.length === bb.length && crypto.timingSafeEqual(ab, bb);
 }
 
-// Start the Strava link. A browser link can't send headers, so the caller's key
-// rides in the query string: either the event's organiser key or the rider's own.
-router.get("/auth/strava", asyncRoute(async (req, res) => {
-  const { code, rider, key } = req.query;
-  if (!code || !rider || !key) return res.status(400).send("Missing event code, rider or key.");
+// Shared by the confirmation GET and the act-on-it POST below: identical checks in
+// identical order, so the POST can never be reached having skipped a check the GET
+// enforced — it re-derives everything itself rather than trusting the earlier hop.
+// Returns the resolved {code, rider, key, ev, r} on success, or null after writing
+// the error response itself (missing -> 400, unknown rider/event mismatch -> 404,
+// bad key -> 403, Strava not configured -> 500).
+async function checkStravaAuth(params, res) {
+  const { code, rider, key } = params || {};
+  if (!code || !rider || !key) { res.status(400).send("Missing event code, rider or key."); return null; }
   const ev = await eventForRider(rider);
   const r = await getRider(rider);
-  if (!ev || !r || ev.code !== String(code)) return res.status(404).send("No such rider in that event.");
+  if (!ev || !r || ev.code !== String(code)) { res.status(404).send("No such rider in that event."); return null; }
   const allowed = key === ev.organiser_token || (r.rider_token && key === r.rider_token);
-  if (!allowed) return res.status(403).send("That key doesn't grant access to this rider.");
-  if (!process.env.STRAVA_CLIENT_ID || !process.env.STRAVA_CLIENT_SECRET) return res.status(500).send("Strava is not configured on this server.");
+  if (!allowed) { res.status(403).send("That key doesn't grant access to this rider."); return null; }
+  if (!process.env.STRAVA_CLIENT_ID || !process.env.STRAVA_CLIENT_SECRET) { res.status(500).send("Strava is not configured on this server."); return null; }
+  return { code, rider, key, ev, r };
+}
+
+// Rider and event names are free text a rider typed in at sign-up, interpolated into
+// server-rendered HTML below — escape both text and (quoted) attribute contexts.
+// public/format.js has an esc() already, but that's browser bundle code; this page
+// renders server-side, so it gets its own tiny copy rather than an import across that line.
+const escHtml = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+// The whole security value of this page is naming the rider and event before anything
+// happens: a victim sent an attacker's link sees a rider who isn't them, on this app's
+// own origin, before Strava is ever involved. See ADR-0003 amendment.
+function confirmPage({ riderName, eventName, code, rider, key, nonce }) {
+  const riderT = escHtml(riderName), eventT = escHtml(eventName);
+  const codeA = escHtml(code), riderA = escHtml(String(rider)), keyA = escHtml(key), nonceA = escHtml(nonce);
+  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Link Strava</title>
+<style>body{font:16px/1.5 -apple-system,system-ui,sans-serif;max-width:30em;margin:3em auto;padding:0 1em;color:#222}
+.btn{display:inline-block;padding:.7em 1.4em;background:#fc4c02;color:#fff;border:0;border-radius:.4em;font-size:1em}
+.cancel{margin-left:1em;color:#666}</style></head><body>
+<h1>Link a Strava account</h1>
+<p>This will link a Strava account to <strong>${riderT}</strong> in <strong>${eventT}</strong>. Only continue if that's you.</p>
+<form method="post" action="/auth/strava">
+<input type="hidden" name="code" value="${codeA}">
+<input type="hidden" name="rider" value="${riderA}">
+<input type="hidden" name="key" value="${keyA}">
+<input type="hidden" name="nonce" value="${nonceA}">
+<button class="btn" type="submit">Continue to Strava</button>
+<a class="cancel" href="/?code=${encodeURIComponent(code)}">Cancel</a>
+</form></body></html>`;
+}
+
+// Confirm step. A browser link can't send headers, so the caller's key rides in the
+// query string as before — but this no longer redirects to Strava. It authenticates,
+// then shows the rider and event it's about to link, on this app's own origin.
+router.get("/auth/strava", asyncRoute(async (req, res) => {
+  const auth = await checkStravaAuth(req.query, res);
+  if (!auth) return;
+  const { code, rider, key, ev, r } = auth;
   const nonce = crypto.randomBytes(16).toString("hex");
-  const state = signState({ code, rider: Number(rider), ts: Date.now(), nonce });
   // secure must be conditional: Railway terminates TLS at a proxy, so req.secure reads false
   // without `trust proxy` set. Unconditional `secure: true` would silently drop the cookie
   // (and break the flow) under local HTTP dev.
   res.cookie(NONCE_COOKIE, nonce, { httpOnly: true, sameSite: "lax", path: NONCE_COOKIE_PATH, maxAge: NONCE_MAX_AGE_MS, secure: baseUrl(req).startsWith("https:") });
+  res.type("html").send(confirmPage({ riderName: r.name, eventName: ev.name, code, rider, key, nonce }));
+}));
+
+// Act step. Re-runs the identical checks — never trusts that the GET ran — then a
+// double-submit compare (form nonce vs cookie nonce) before minting state and leaving
+// this app's origin. SameSite=Lax already blocks a cross-site auto-POST to here; this
+// check is belt-and-braces for anything that doesn't honour SameSite.
+router.post("/auth/strava", asyncRoute(async (req, res) => {
+  const auth = await checkStravaAuth(req.body, res);
+  if (!auth) return;
+  const { code, rider } = auth;
+  const formNonce = req.body?.nonce;
+  const cookieNonce = readCookie(req.headers.cookie, NONCE_COOKIE);
+  if (!formNonce || !cookieNonce || !safeEqual(String(formNonce), cookieNonce)) return res.status(403).send("Could not verify this request — go back and try again.");
+  const state = signState({ code, rider: Number(rider), ts: Date.now(), nonce: cookieNonce });
   res.redirect(authUrl(state, `${baseUrl(req)}/auth/strava/callback`));
 }));
 
@@ -43,9 +99,9 @@ router.get("/auth/strava/callback", asyncRoute(async (req, res) => {
   const refuse = (signal) => { res.clearCookie(NONCE_COOKIE, { path: NONCE_COOKIE_PATH }); return res.redirect(`/?stravaerror=${signal}`); };
   try {
     const { code: authCode, state, error } = req.query;
-    if (error) return res.redirect(`/?stravaerror=1`);
+    if (error) return refuse("1");
     const payload = verifyState(state);
-    if (!payload) return res.redirect(`/?stravaerror=1`);
+    if (!payload) return refuse("1");
     // Nonce check happens before exchange() so a refused flow never contacts Strava.
     // The cookie-absent case gets its own signal (a rider with cookies blocked needs a
     // message that names the cause); a genuine mismatch stays on the generic error so an
