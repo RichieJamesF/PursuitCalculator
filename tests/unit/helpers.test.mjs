@@ -72,6 +72,12 @@ test("requireRiderOrOrg rejects a rider with no key stored, even if the header i
   assert.equal(res.code, 403);
 });
 
+test("requireRiderOrOrg rejects an empty stored key against an empty header", () => {
+  const res = fakeRes();
+  assert.equal(requireRiderOrOrg({ organiser_token: "org1" }, { rider_token: "" }, fakeReq({ "x-rider-token": "" }), res), false);
+  assert.equal(res.code, 403);
+});
+
 test("requireRiderOrOrg 404s a missing event or missing rider", () => {
   const noEvent = fakeRes();
   assert.equal(requireRiderOrOrg(null, { rider_token: "r" }, fakeReq({}), noEvent), false);

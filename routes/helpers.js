@@ -32,7 +32,7 @@ const isNumericId = (v) => {
   if (!/^\d+$/.test(s)) return false;
   // Reject values outside int4 range to avoid Postgres "value out of range" errors
   const n = BigInt(s);
-  return n >= 0n && n <= 2147483647n;
+  return n <= 2147483647n;
 };
 
 export async function eventForRider(riderId) {
