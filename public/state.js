@@ -5,18 +5,35 @@ export const app = document.getElementById("app");
 export const params = new URLSearchParams(location.search);
 export const LS = window.localStorage;
 
+export const riderKeyLS = (code, id) => `pursuit:riderkey:${code}:${id}`;
+
+const startCode = params.get("code") || LS.getItem("pursuit:lastCode") || "";
+const qRider = params.get("rider"), qKey = params.get("key");
+const riderId = qRider && /^\d+$/.test(qRider) ? Number(qRider) : null;
+
+// A rider arriving on their own link carries their key in the URL; remember it so
+// the same device recognises them next time without the link.
+let riderKey = "";
+if (startCode && riderId) {
+  riderKey = qKey || LS.getItem(riderKeyLS(startCode, riderId)) || "";
+  if (qKey) LS.setItem(riderKeyLS(startCode, riderId), qKey);
+}
+
 export const state = {
-  code: params.get("code") || LS.getItem("pursuit:lastCode") || "",
+  code: startCode,
   token: "",
+  riderId,
+  riderKey,
   signup: params.get("signup") === "1",
   data: null,
   work: { groups: [], unassigned: [] },
   sel: null,
   saveStatus: "",
   ridePicker: null,
-  mode: params.get("code") || LS.getItem("pursuit:lastCode") ? "app" : "landing",
+  mode: riderId && riderKey ? "rider" : (startCode ? "app" : "landing"),
   justCreated: null,
-  banner: params.get("stravalinked") ? "Strava linked — hit Refine after the ride." : params.get("stravaerror") ? "Strava linking failed." : "",
+  justSignedUp: null,
+  banner: params.get("stravalinked") ? "Strava linked — you can refine your FTP now." : params.get("stravaerror") ? "Strava linking failed." : "",
 };
 if (state.code) state.token = LS.getItem("pursuit:token:" + state.code) || "";
 

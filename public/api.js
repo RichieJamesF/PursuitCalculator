@@ -1,9 +1,10 @@
 import { state, LS } from "./state.js";
 import { render } from "./views.js";
 
-export async function api(path, method = "GET", body, withToken) {
+export async function api(path, method = "GET", body, auth) {
   const headers = { "Content-Type": "application/json" };
-  if (withToken) headers["x-organiser-token"] = state.token;
+  if (auth === "rider") headers["x-rider-token"] = state.riderKey;
+  else if (auth) headers["x-organiser-token"] = state.token;
   const res = await fetch("/api" + path, { method, headers, body: body ? JSON.stringify(body) : undefined });
   const json = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(json.error || "Request failed");
