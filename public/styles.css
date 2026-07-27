@@ -42,8 +42,6 @@ button{font-family:inherit;cursor:pointer}
 .rr-ctrl input{width:70px;padding:6px;font-size:13px}.rr-ctrl select{max-width:150px;font-size:12px;padding:6px}
 .rr-ctrl .del{margin-bottom:2px}
 .rr-tools{display:flex;gap:6px;align-items:center;margin-top:8px;flex-wrap:wrap}
-.pill{font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;padding:3px 7px;border-radius:2px}
-.pill.on{background:#1f7a4d;color:#fff}.pill.off{background:#ece9e2;color:var(--mut)}
 .del{border:0;background:transparent;font-size:19px;color:var(--mut);margin-left:auto}.del:hover{color:var(--pink-deep)}
 .stepper{display:flex;align-items:center;border:1px solid var(--ink);border-radius:3px;overflow:hidden}
 .stepper button{border:0;background:transparent;width:28px;height:30px;font-size:16px}.stepper button:hover{background:var(--ink);color:var(--paper)}
@@ -114,24 +112,6 @@ td.grp b{display:block;color:#fff}td.gap{color:var(--pink)}
 .bench{display:flex;flex-wrap:wrap;gap:8px;align-items:center}.bench .chip{width:auto;min-width:120px}
 .swaphint{font-size:12px;color:var(--pink-deep);margin-top:10px}
 .grpcard .turnbar{background:#eceae4;margin:6px 0 0}
-
-/* --- Strava ride picker modal --- */
-.modal-back{position:fixed;inset:0;background:rgba(20,18,16,.55);display:flex;align-items:flex-start;justify-content:center;padding:5vh 16px;z-index:50;overflow:auto}
-.modal{background:var(--paper);border-radius:6px;width:100%;max-width:640px;padding:18px;box-shadow:0 24px 60px -20px rgba(0,0,0,.6)}
-.modal-hd{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:8px}
-.modal-hd h2{font-size:22px;font-family:"Arial Narrow","Helvetica Neue",ui-sans-serif;font-stretch:condensed;text-transform:uppercase;margin-top:2px}
-.modal-x{border:0;background:transparent;font-size:26px;line-height:1;color:var(--mut);cursor:pointer}
-.modal-tools{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin:12px 0}
-.chk{font-size:12px;color:var(--mut);display:flex;align-items:center;gap:6px}
-.ridelist{display:flex;flex-direction:column;gap:8px;max-height:52vh;overflow:auto}
-.ridecard{border:1px solid var(--line);border-radius:4px;background:#fff;padding:10px;display:flex;flex-direction:column;gap:7px}
-.ridecard.match{border-color:var(--pink);box-shadow:0 0 0 1px var(--pink) inset}
-.ride-main b{font-size:14px}.ride-sub{display:block;font-size:12px;color:var(--mut);font-family:ui-monospace,Menlo,monospace;margin-top:2px}
-.ride-tags{display:flex;gap:6px;flex-wrap:wrap}
-.tg{font-size:9px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;padding:2px 6px;border-radius:2px}
-.tg-match{background:#1f7a4d;color:#fff}.tg-com{background:#b9821a;color:#fff}.tg-pow{background:#2a2a2a;color:#fff}
-.ride-acts{display:flex;gap:8px}
-.ride-acts .add:disabled{opacity:.4;cursor:not-allowed}
 
 /* --- landing / entry gate --- */
 .landing{max-width:860px;margin:0 auto;padding-top:26px}

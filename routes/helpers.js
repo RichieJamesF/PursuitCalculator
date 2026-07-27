@@ -27,14 +27,29 @@ export async function getRiders(eventId) {
   return rows;
 }
 
+const isNumericId = (v) => {
+  const s = String(v);
+  if (!/^\d+$/.test(s)) return false;
+  // Reject values outside int4 range to avoid Postgres "value out of range" errors
+  const n = BigInt(s);
+  return n <= 2147483647n;
+};
+
 export async function eventForRider(riderId) {
+  if (!isNumericId(riderId)) return null;
   const { rows } = await q("SELECT e.* FROM events e JOIN riders r ON r.event_id=e.id WHERE r.id=$1", [riderId]);
   return rows[0] || null;
 }
 
-export const publicRider = (r) => ({ id: r.id, name: r.name, w: r.weight, ftp: r.ftp, pos: r.pos, build: r.build, calib: r.calib, strava: !!r.strava_athlete_id, lastRefined: r.last_refined_at });
+export async function getRider(riderId) {
+  if (!isNumericId(riderId)) return null;
+  const { rows } = await q("SELECT * FROM riders WHERE id=$1", [riderId]);
+  return rows[0] || null;
+}
 
-export const engineRider = (r) => ({ id: r.id, name: r.name, w: r.weight, ftp: r.ftp, pos: r.pos, build: r.build, calib: r.calib });
+export const publicRider = (r) => ({ id: r.id, name: r.name, w: r.weight, ftp: r.ftp, pos: r.pos, build: r.build });
+
+export const engineRider = (r) => ({ id: r.id, name: r.name, w: r.weight, ftp: r.ftp, pos: r.pos, build: r.build });
 
 export const engineRidersById = (riders) => Object.fromEntries(riders.map((r) => [r.id, engineRider(r)]));
 
@@ -45,6 +60,19 @@ export function requireOrg(ev, req, res) {
   if (!ev) { res.status(404).json({ error: "No event with that code." }); return false; }
   if (!t || t !== ev.organiser_token) { res.status(403).json({ error: "Organiser token required." }); return false; }
   return true;
+}
+
+// Either the event's organiser or the rider themselves. Same self-reporting
+// contract as requireOrg: writes the error response and returns false.
+export function requireRiderOrOrg(ev, rider, req, res) {
+  if (!rider) { res.status(404).json({ error: "No such rider." }); return false; }
+  if (!ev) { res.status(404).json({ error: "No event with that code." }); return false; }
+  const org = req.get("x-organiser-token");
+  if (org && org === ev.organiser_token) return true;
+  const own = req.get("x-rider-token");
+  if (own && rider.rider_token && own === rider.rider_token) return true;
+  res.status(403).json({ error: "Organiser key, or your own rider key, required." });
+  return false;
 }
 
 export async function eventPayload(ev) {

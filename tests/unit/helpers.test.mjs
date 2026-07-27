@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { clampGroupSize, truncate, publicRider, engineRider, paramsOf } from "../../routes/helpers.js";
+import { clampGroupSize, truncate, publicRider, engineRider, paramsOf, requireRiderOrOrg } from "../../routes/helpers.js";
 
 test("clampGroupSize clamps to the 1-8 range and falls back when null", () => {
   assert.equal(clampGroupSize(0, 2), 1);
@@ -15,13 +15,13 @@ test("truncate slices strings to a max length and falls back when null", () => {
 });
 
 test("publicRider shapes a DB row for API responses", () => {
-  const row = { id: 1, name: "Ann", weight: 68, ftp: 220, pos: "road_drops", build: "medium", calib: 1.05, strava_athlete_id: 42, last_refined_at: "2026-01-01" };
-  assert.deepEqual(publicRider(row), { id: 1, name: "Ann", w: 68, ftp: 220, pos: "road_drops", build: "medium", calib: 1.05, strava: true, lastRefined: "2026-01-01" });
+  const row = { id: 1, name: "Ann", weight: 68, ftp: 220, pos: "road_drops", build: "medium" };
+  assert.deepEqual(publicRider(row), { id: 1, name: "Ann", w: 68, ftp: 220, pos: "road_drops", build: "medium" });
 });
 
 test("engineRider shapes a DB row for the physics engine", () => {
-  const row = { id: 1, name: "Ann", weight: 68, ftp: 220, pos: "road_drops", build: "medium", calib: 1.05 };
-  assert.deepEqual(engineRider(row), { id: 1, name: "Ann", w: 68, ftp: 220, pos: "road_drops", build: "medium", calib: 1.05 });
+  const row = { id: 1, name: "Ann", weight: 68, ftp: 220, pos: "road_drops", build: "medium" };
+  assert.deepEqual(engineRider(row), { id: 1, name: "Ann", w: 68, ftp: 220, pos: "road_drops", build: "medium" });
 });
 
 test("paramsOf merges stored params over defaults", () => {
@@ -33,4 +33,71 @@ test("paramsOf merges stored params over defaults", () => {
 test("paramsOf falls back to all defaults when params_json is null", () => {
   const merged = paramsOf({ params_json: null });
   assert.equal(merged.effort, 100);
+});
+
+const fakeRes = () => ({
+  code: null, body: null,
+  status(c) { this.code = c; return this; },
+  json(b) { this.body = b; return this; },
+});
+const fakeReq = (headers) => ({ get: (h) => headers[h.toLowerCase()] ?? undefined });
+
+test("requireRiderOrOrg accepts the event's organiser token", () => {
+  const res = fakeRes();
+  const ok = requireRiderOrOrg({ organiser_token: "org1" }, { rider_token: "rid1" }, fakeReq({ "x-organiser-token": "org1" }), res);
+  assert.equal(ok, true);
+  assert.equal(res.code, null);
+});
+
+test("requireRiderOrOrg accepts that rider's own key", () => {
+  const res = fakeRes();
+  const ok = requireRiderOrOrg({ organiser_token: "org1" }, { rider_token: "rid1" }, fakeReq({ "x-rider-token": "rid1" }), res);
+  assert.equal(ok, true);
+});
+
+test("requireRiderOrOrg rejects another rider's key with 403", () => {
+  const res = fakeRes();
+  const ok = requireRiderOrOrg({ organiser_token: "org1" }, { rider_token: "rid1" }, fakeReq({ "x-rider-token": "rid2" }), res);
+  assert.equal(ok, false);
+  assert.equal(res.code, 403);
+});
+
+test("requireRiderOrOrg rejects a rider with no key stored, even if the header is the literal string 'null'", () => {
+  // Defence-in-depth: strict equality (own === rider.rider_token) plus existence checks
+  // (own && rider.rider_token &&). The literal string "null" passes the truthy check but
+  // will not equal null, so this test pins the existence guard working independently.
+  const res = fakeRes();
+  const ok = requireRiderOrOrg({ organiser_token: "org1" }, { rider_token: null }, fakeReq({ "x-rider-token": "null" }), res);
+  assert.equal(ok, false);
+  assert.equal(res.code, 403);
+});
+
+test("requireRiderOrOrg rejects an empty stored key against an empty header", () => {
+  const res = fakeRes();
+  assert.equal(requireRiderOrOrg({ organiser_token: "org1" }, { rider_token: "" }, fakeReq({ "x-rider-token": "" }), res), false);
+  assert.equal(res.code, 403);
+});
+
+test("requireRiderOrOrg 404s a missing event or missing rider", () => {
+  const noEvent = fakeRes();
+  assert.equal(requireRiderOrOrg(null, { rider_token: "r" }, fakeReq({}), noEvent), false);
+  assert.equal(noEvent.code, 404);
+
+  const noRider = fakeRes();
+  assert.equal(requireRiderOrOrg({ organiser_token: "o" }, null, fakeReq({}), noRider), false);
+  assert.equal(noRider.code, 404);
+});
+
+test("requireRiderOrOrg rejects a wrong organiser token with 403", () => {
+  const res = fakeRes();
+  const ok = requireRiderOrOrg({ organiser_token: "org1" }, { rider_token: "rid1" }, fakeReq({ "x-organiser-token": "wrong" }), res);
+  assert.equal(ok, false);
+  assert.equal(res.code, 403);
+});
+
+test("requireRiderOrOrg rejects a missing organiser token even when event and rider exist", () => {
+  const res = fakeRes();
+  const ok = requireRiderOrOrg({ organiser_token: "org1" }, { rider_token: "rid1" }, fakeReq({}), res);
+  assert.equal(ok, false);
+  assert.equal(res.code, 403);
 });

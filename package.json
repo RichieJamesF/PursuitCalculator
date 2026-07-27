@@ -1,7 +1,7 @@
 {
   "name": "pursuit-server",
   "version": "1.0.0",
-  "description": "The Pursuit — cycling handicap start-sheet calculator with Strava refinement",
+  "description": "The Pursuit — cycling handicap start-sheet calculator",
   "type": "module",
   "main": "server.js",
   "scripts": {

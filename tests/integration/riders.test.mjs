@@ -27,7 +27,6 @@ describe("riders routes", () => {
     assert.equal(body.name, "Alex");
     assert.equal(body.w, 70);
     assert.equal(body.ftp, 250);
-    assert.equal(body.strava, false);
   });
 
   test("POST /api/events/:code/riders rejects a missing name", async () => {
@@ -85,5 +84,172 @@ describe("riders routes", () => {
     const check = await fetch(`${ctx.baseUrl}/api/events/riders-delete`);
     const checkBody = await check.json();
     assert.equal(checkBody.riders.length, 0);
+  });
+
+  test("POST /api/events/:code/riders returns a rider key once, and never leaks it again", async () => {
+    await createEvent(ctx.baseUrl, "riders-key");
+    const signup = await fetch(`${ctx.baseUrl}/api/events/riders-key/riders`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "Kit" }),
+    }).then((r) => r.json());
+
+    assert.match(signup.riderKey, /^[a-f0-9]{32}$/);
+
+    const listed = await fetch(`${ctx.baseUrl}/api/events/riders-key`).then((r) => r.json());
+    assert.equal(listed.riders.length, 1);
+    assert.equal(listed.riders[0].riderKey, undefined);
+    assert.equal(listed.riders[0].rider_token, undefined);
+  });
+
+  test("two riders in the same event get different rider keys", async () => {
+    await createEvent(ctx.baseUrl, "riders-key2");
+    const add = (name) => fetch(`${ctx.baseUrl}/api/events/riders-key2/riders`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name }),
+    }).then((r) => r.json());
+    const a = await add("Ann"), b = await add("Bea");
+    assert.notEqual(a.riderKey, b.riderKey);
+  });
+
+  test("a rider can PATCH their own row with their rider key", async () => {
+    await createEvent(ctx.baseUrl, "riders-self");
+    const me = await fetch(`${ctx.baseUrl}/api/events/riders-self/riders`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "Sam", ftp: 240 }),
+    }).then((r) => r.json());
+
+    const res = await fetch(`${ctx.baseUrl}/api/riders/${me.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", "x-rider-token": me.riderKey },
+      body: JSON.stringify({ ftp: 265, w: 72 }),
+    });
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.equal(body.ftp, 265);
+    assert.equal(body.w, 72);
+    assert.equal(body.name, "Sam");
+  });
+
+  test("a rider key cannot edit a different rider", async () => {
+    await createEvent(ctx.baseUrl, "riders-cross");
+    const add = (name) => fetch(`${ctx.baseUrl}/api/events/riders-cross/riders`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name }),
+    }).then((r) => r.json());
+    const a = await add("Ann"), b = await add("Bea");
+
+    const res = await fetch(`${ctx.baseUrl}/api/riders/${b.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", "x-rider-token": a.riderKey },
+      body: JSON.stringify({ name: "Hacked" }),
+    });
+    assert.equal(res.status, 403);
+  });
+
+  test("a rider can remove themselves with their rider key", async () => {
+    await createEvent(ctx.baseUrl, "riders-selfdel");
+    const me = await fetch(`${ctx.baseUrl}/api/events/riders-selfdel/riders`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "Gone" }),
+    }).then((r) => r.json());
+
+    const res = await fetch(`${ctx.baseUrl}/api/riders/${me.id}`, {
+      method: "DELETE", headers: { "x-rider-token": me.riderKey },
+    });
+    assert.equal(res.status, 200);
+    const check = await fetch(`${ctx.baseUrl}/api/events/riders-selfdel`).then((r) => r.json());
+    assert.equal(check.riders.length, 0);
+  });
+
+  test("PATCH /api/riders/:id rejects a non-numeric weight instead of persisting NaN", async () => {
+    const ev = await createEvent(ctx.baseUrl, "riders-nan-w");
+    const addRes = await fetch(`${ctx.baseUrl}/api/events/riders-nan-w/riders`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "Nan" }),
+    });
+    const rider = await addRes.json();
+    const res = await fetch(`${ctx.baseUrl}/api/riders/${rider.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", "x-organiser-token": ev.organiserToken },
+      body: JSON.stringify({ w: "abc" }),
+    });
+    assert.equal(res.status, 400);
+    const body = await res.json();
+    assert.match(body.error, /weight/i);
+    const check = await fetch(`${ctx.baseUrl}/api/events/riders-nan-w`).then((r) => r.json());
+    assert.equal(check.riders[0].w, 75); // unchanged, not NaN
+  });
+
+  test("PATCH /api/riders/:id rejects a blank name", async () => {
+    const ev = await createEvent(ctx.baseUrl, "riders-blank-name");
+    const addRes = await fetch(`${ctx.baseUrl}/api/events/riders-blank-name/riders`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "Original" }),
+    });
+    const rider = await addRes.json();
+    const res = await fetch(`${ctx.baseUrl}/api/riders/${rider.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", "x-organiser-token": ev.organiserToken },
+      body: JSON.stringify({ name: "   " }),
+    });
+    assert.equal(res.status, 400);
+    const check = await fetch(`${ctx.baseUrl}/api/events/riders-blank-name`).then((r) => r.json());
+    assert.equal(check.riders[0].name, "Original"); // unchanged, not blanked
+  });
+
+  test("PATCH /api/riders/:id rejects an out-of-range FTP", async () => {
+    const ev = await createEvent(ctx.baseUrl, "riders-bad-ftp");
+    const addRes = await fetch(`${ctx.baseUrl}/api/events/riders-bad-ftp/riders`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "Lo" }),
+    });
+    const rider = await addRes.json();
+    const res = await fetch(`${ctx.baseUrl}/api/riders/${rider.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", "x-organiser-token": ev.organiserToken },
+      body: JSON.stringify({ ftp: 10 }),
+    });
+    assert.equal(res.status, 400);
+    const body = await res.json();
+    assert.match(body.error, /FTP/);
+  });
+
+  test("PATCH /api/riders/:id still succeeds with a valid edit alongside the new validation", async () => {
+    const ev = await createEvent(ctx.baseUrl, "riders-still-valid");
+    const addRes = await fetch(`${ctx.baseUrl}/api/events/riders-still-valid/riders`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "Val" }),
+    });
+    const rider = await addRes.json();
+    const res = await fetch(`${ctx.baseUrl}/api/riders/${rider.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", "x-organiser-token": ev.organiserToken },
+      body: JSON.stringify({ name: "Valerie", w: 68, ftp: 255 }),
+    });
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.equal(body.name, "Valerie");
+    assert.equal(body.w, 68);
+    assert.equal(body.ftp, 255);
+  });
+
+  test("PATCH /api/riders/:id with a non-numeric id 404s with a sensible message", async () => {
+    const res = await fetch(`${ctx.baseUrl}/api/riders/not-an-id`, {
+      method: "PATCH", headers: { "Content-Type": "application/json", "x-rider-token": "whatever" },
+      body: JSON.stringify({ name: "x" }),
+    });
+    assert.equal(res.status, 404);
+    const body = await res.json();
+    assert.equal(body.error, "No such rider.");
+  });
+
+  test("PATCH /api/riders/:id with an out-of-int4-range id 404s instead of erroring", async () => {
+    const res = await fetch(`${ctx.baseUrl}/api/riders/99999999999999999999`, {
+      method: "PATCH", headers: { "Content-Type": "application/json", "x-rider-token": "whatever" },
+      body: JSON.stringify({ name: "x" }),
+    });
+    assert.equal(res.status, 404);
+    const body = await res.json();
+    assert.equal(body.error, "No such rider.");
   });
 });

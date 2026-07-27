@@ -1,9 +1,10 @@
 import { state, LS } from "./state.js";
 import { render } from "./views.js";
 
-export async function api(path, method = "GET", body, withToken) {
+export async function api(path, method = "GET", body, auth) {
   const headers = { "Content-Type": "application/json" };
-  if (withToken) headers["x-organiser-token"] = state.token;
+  if (auth === "rider") headers["x-rider-token"] = state.riderKey;
+  else if (auth) headers["x-organiser-token"] = state.token;
   const res = await fetch("/api" + path, { method, headers, body: body ? JSON.stringify(body) : undefined });
   const json = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(json.error || "Request failed");
@@ -20,7 +21,9 @@ export function syncWork() {
 export async function loadEvent() {
   if (!state.code) { state.mode = "landing"; render(); return; }
   if (saving) await new Promise((r) => { const t = setInterval(() => { if (!saving) { clearInterval(t); r(); } }, 20); });
-  try { state.data = await api("/events/" + encodeURIComponent(state.code)); LS.setItem("pursuit:lastCode", state.code); syncWork(); state.mode = "app"; }
+  // A rider arriving on their own link is already in "rider" mode; don't demote them to the
+  // organiser view just because the event loaded.
+  try { state.data = await api("/events/" + encodeURIComponent(state.code)); LS.setItem("pursuit:lastCode", state.code); syncWork(); state.mode = state.riderId !== null && state.riderKey ? "rider" : "app"; }
   catch { state.data = null; state.mode = "landing"; state.banner = "Couldn't find event “" + state.code + "”. Check the code, or create a new event."; }
   render();
 }

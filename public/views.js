@@ -1,7 +1,7 @@
 import { cdaOf } from "/engine.mjs";
 import { state, app, POSITIONS, BUILDS, SHADES, el, ridersById, LS } from "./state.js";
 import { esc, fmtDur, fmtGap, addClock } from "./format.js";
-import { toLanding, detailsMailto, copyDetails, createEvent, openExisting, patchEvent, addRider, updRider, delRider, openRidePicker, autoRefine, applyRefine, origin } from "./actions.js";
+import { toLanding, detailsMailto, copyDetails, createEvent, openExisting, patchEvent, addRider, updRider, delRider, origin, signUp, riderLink, riderMailto, copyRiderDetails, openRiderPage, updRiderSelf } from "./actions.js";
 import { api, savedEvents } from "./api.js";
 import { suggestLocal, clearGroups, newGroup, moveTo, toggleLock, breakGroup, goSolo, joinBest, onPick, localSheet, exportCSV } from "./grouping.js";
 import { parseCourseFile } from "./course.js";
@@ -9,6 +9,7 @@ import { parseCourseFile } from "./course.js";
 /* ---- render -------------------------------------------------------------- */
 export function render() {
   if (state.signup) return renderSignup();
+  if (state.mode === "rider" && state.data) return renderRiderPage();
   if (state.mode === "landing" || !state.data) return renderLanding();
   const d = state.data, ev = d?.event, origin = location.origin;
   const km = ev?.course ? (ev.course.distanceM / 1000).toFixed(1) : "—", asc = ev?.course ? Math.round(ev.course.ascentM) : "—";
@@ -21,7 +22,7 @@ export function render() {
     </div>
     ${state.banner ? `<div class="banner">${esc(state.banner)}</div>` : ""}
     <div class="grid"><div class="col" id="left"></div><div class="col" id="right"></div></div>
-    <div class="foot">Theoretical times — a planning aid, not a promise. Tune the assumptions to your roads and riders.</div>`;
+    <div class="foot">Theoretical times — a planning aid, not a promise.</div>`;
   const left = document.getElementById("left"), right = document.getElementById("right");
 
   // Event summary (create/open now happen on the landing screen)
@@ -61,48 +62,11 @@ export function render() {
   const sheet = localSheet();
   right.appendChild(groupsPanel(ev, canEdit, sheet));
   right.appendChild(boardEl(ev, canEdit, sheet));
-
-  if (state.ridePicker) app.appendChild(ridePickerEl());
-}
-
-function ridePickerEl() {
-  const { riderId, rides, course, hideCommutes } = state.ridePicker;
-  const rider = ridersById()[riderId];
-  const shown = rides.filter((r) => !(hideCommutes && r.commute));
-  const shortDate = (d) => new Date(d).toLocaleDateString(undefined, { day: "numeric", month: "short" });
-  const overlay = el(`<div class="modal-back"><div class="modal">
-    <div class="modal-hd"><div><span class="kicker">Refine from Strava</span><h2>${esc(rider?.name || "Rider")}'s recent rides</h2></div><button class="modal-x" id="close">×</button></div>
-    <p class="hint">Pick a real effort — not a commute. <b>Use time</b> calibrates from how fast this ride was over your course (${course.distanceKm ? course.distanceKm + " km" : "no course set"}). <b>FTP from power</b> reads the ride's power as an FTP estimate (best on a 30–60 min hard effort).</p>
-    <div class="modal-tools"><button class="btn" id="auto" ${course.distanceKm ? "" : "disabled"}>Auto · fastest effort on course</button>
-      <label class="chk"><input type="checkbox" id="hc" ${hideCommutes ? "checked" : ""}/> Hide commutes</label></div>
-    <div class="ridelist" id="ridelist"></div>
-  </div></div>`);
-  overlay.querySelector("#close").onclick = () => { state.ridePicker = null; render(); };
-  overlay.onclick = (e) => { if (e.target === overlay) { state.ridePicker = null; render(); } };
-  overlay.querySelector("#auto").onclick = () => autoRefine(riderId);
-  overlay.querySelector("#hc").onchange = (e) => { state.ridePicker.hideCommutes = e.target.checked; render(); };
-
-  const list = overlay.querySelector("#ridelist");
-  if (!shown.length) list.innerHTML = `<p class="empty">No rides in the last 6 weeks${hideCommutes ? " (commutes hidden)" : ""}.</p>`;
-  shown.forEach((rd) => {
-    const power = rd.weightedWatts != null ? `${rd.weightedWatts} W · meter` : rd.avgWatts != null ? `${rd.avgWatts} W · est` : "no power";
-    const card = el(`<div class="ridecard ${rd.matches ? "match" : ""}">
-      <div class="ride-main"><b>${esc(rd.name)}</b><span class="ride-sub">${shortDate(rd.date)} · ${rd.distanceKm} km · ${fmtDur(rd.movingTime)} · ${rd.avgSpeedKmh} km/h · ${power}</span></div>
-      <div class="ride-tags">${rd.matches ? `<span class="tg tg-match">matches course${rd.impliedCalib ? ` · ×${rd.impliedCalib}` : ""}</span>` : ""}${rd.commute ? `<span class="tg tg-com">commute</span>` : ""}${rd.hasPower ? `<span class="tg tg-pow">power meter</span>` : ""}</div>
-      <div class="ride-acts">
-        <button class="add usetime" ${rd.matches ? "" : "disabled"} title="${rd.matches ? "Calibrate from this ride's time on the course" : "Only for rides that match the course distance"}">Use time</button>
-        <button class="add usepow" ${rd.avgWatts != null || rd.weightedWatts != null ? "" : "disabled"} title="Set FTP from this ride's power">FTP from power</button>
-      </div></div>`);
-    card.querySelector(".usetime").onclick = () => applyRefine(riderId, rd.id, "course");
-    card.querySelector(".usepow").onclick = () => applyRefine(riderId, rd.id, "power");
-    list.appendChild(card);
-  });
-  return overlay;
 }
 
 function coursePanel(ev, canEdit, km, asc) {
   const cs = el(`<div class="panel"><div class="panel-hd"><h2>Course</h2></div>
-    <div class="drop" id="drop" tabindex="0" role="button"><b>Drop a GPX or FIT — or tap to choose</b><span>Strava route → Export GPX, or a Wahoo/Garmin .fit off the head unit.</span></div>
+    <div class="drop" id="drop" tabindex="0" role="button"><b>Drop a GPX or FIT — or tap to choose</b><span>Export a GPX from your ride computer or app, or a Wahoo/Garmin .fit off the head unit.</span></div>
     <input type="file" id="file" accept=".gpx,.fit" hidden/>
     <p class="err" id="cerr" style="display:none"></p>
     <div class="two" style="margin-top:12px"><label class="f">Distance (km)<input type="number" id="km" value="${ev.course ? (ev.course.distanceM / 1000).toFixed(1) : 45}"/></label><label class="f">Total ascent (m)<input type="number" id="asc" value="${ev.course ? Math.round(ev.course.ascentM) : 500}"/></label></div>
@@ -201,16 +165,12 @@ function riderRow(r, canEdit) {
       <label class="rf"><span>Bike</span><select class="pos" ${canEdit ? "" : "disabled"}>${Object.entries(POSITIONS).map(([k, v]) => `<option value="${k}" ${k === r.pos ? "selected" : ""}>${v}</option>`).join("")}</select></label>
       <label class="rf"><span>Build</span><select class="build" ${canEdit ? "" : "disabled"}>${Object.entries(BUILDS).map(([k, v]) => `<option value="${k}" ${k === r.build ? "selected" : ""}>${v}</option>`).join("")}</select></label>
       ${canEdit ? `<button class="del" title="Remove">×</button>` : ""}</div>
-    <div class="rr-tools"><span class="pill ${r.strava ? "on" : "off"}">${r.strava ? "Strava linked" : "No Strava"}</span>
-      <span class="micro">${wkg} W/kg${r.calib && r.calib !== 1 ? ` · cal ×${r.calib.toFixed(2)}` : ""}</span>
-      ${canEdit ? `<a class="ghost" href="/auth/strava?code=${encodeURIComponent(state.code)}&rider=${r.id}">${r.strava ? "Re-link" : "Link Strava"}</a>` : ""}
-      ${canEdit && r.strava ? `<button class="ghost refine">Refine</button>` : ""}</div></div>`);
+    <div class="rr-tools"><span class="micro">${wkg} W/kg</span></div></div>`);
   if (canEdit) {
     const save = () => updRider(r.id, { name: row.querySelector(".rr-name").value, w: +row.querySelector(".w").value, ftp: +row.querySelector(".ftp").value, pos: row.querySelector(".pos").value, build: row.querySelector(".build").value });
     row.querySelector(".rr-name").onblur = save;
     row.querySelectorAll(".w,.ftp,.pos,.build").forEach((i) => (i.onchange = save));
     row.querySelector(".del").onclick = () => confirm(`Remove ${r.name}?`) && delRider(r.id);
-    const rf = row.querySelector(".refine"); if (rf) rf.onclick = () => openRidePicker(r.id);
   }
   return row;
 }
@@ -299,17 +259,83 @@ function renderCreated() {
   document.getElementById("go").onclick = () => { state.justCreated = null; state.mode = "app"; state.banner = ""; render(); };
 }
 
+/* ---- rider self-service -------------------------------------------------- */
+function renderRiderPage() {
+  const me = (state.data.riders || []).find((r) => r.id === state.riderId);
+  if (!me) {
+    app.innerHTML = `<div class="center"><span class="kicker">Rider</span><h1 class="su-title">NOT FOUND</h1>
+      <p class="hint">You're not on the rider list for “${esc(state.code)}” any more — the organiser may have removed you. Sign up again with the link they sent you.</p>
+      <a class="btn" href="/?code=${encodeURIComponent(state.code)}&signup=1">Sign up again</a></div>`;
+    return;
+  }
+  const ev = state.data.event;
+  const km = ev?.course ? (ev.course.distanceM / 1000).toFixed(1) : "—";
+  const mine = state.data.sheet?.rows?.find((row) => row.members.some((m) => m.id === me.id));
+  const wkg = (me.ftp / (me.w + 8)).toFixed(2);
+
+  app.innerHTML = `
+    <div class="mast"><div class="rule"></div>
+      <div class="mast-row">
+        <div><span class="kicker">Your details</span><h1>THE PURSUIT</h1></div>
+        <div class="meta"><div><span>Event</span><b>${esc(ev.name)}</b></div><div><span>Distance</span><b>${km} km</b></div><div><span>W/kg</span><b>${wkg}</b></div></div>
+      </div><div class="rule"></div>
+    </div>
+    ${state.banner ? `<div class="banner">${esc(state.banner)}</div>` : ""}
+    <div class="grid"><div class="col" id="left"></div><div class="col" id="right"></div></div>
+    <div class="foot">Theoretical times — a planning aid, not a promise.</div>`;
+  const left = document.getElementById("left"), right = document.getElementById("right");
+
+  const card = el(`<div class="panel"><div class="panel-hd"><h2>${esc(me.name)}</h2></div>
+    <p class="hint">Change anything here and it updates the start sheet straight away. Everyone with the event link can see your numbers below; only you and your organiser can change them.</p>
+    <p class="err" id="rerr" style="display:none"></p>
+    <label class="f">Name<input id="r-name" value="${esc(me.name)}"/></label>
+    <div class="two"><label class="f">Weight (kg)<input type="number" id="r-w" value="${me.w}"/></label>
+      <label class="f">FTP (W)<input type="number" id="r-ftp" value="${me.ftp}"/></label></div>
+    <div class="two"><label class="f">Bike / position<select id="r-pos">${Object.entries(POSITIONS).map(([k, v]) => `<option value="${k}" ${k === me.pos ? "selected" : ""}>${v}</option>`).join("")}</select></label>
+      <label class="f">Build<select id="r-build">${Object.entries(BUILDS).map(([k, v]) => `<option value="${k}" ${k === me.build ? "selected" : ""}>${v}</option>`).join("")}</select></label></div>
+    <p class="micro">Weight is you plus kit; the model adds 8 kg for the bike.</p>
+  </div>`);
+  const nameI = card.querySelector("#r-name"), wI = card.querySelector("#r-w"), ftpI = card.querySelector("#r-ftp"), rerr = card.querySelector("#rerr");
+  const showErr = (msg) => { rerr.textContent = msg; rerr.style.display = "block"; };
+  // Guard against blanks/typos before they ever reach the server: a rider self-editing has no
+  // one watching over their shoulder the way an organiser editing riderRow does.
+  const save = () => {
+    const name = nameI.value.trim(), w = +wI.value, ftp = +ftpI.value;
+    if (!name) { showErr("Add your name — it can't be blank."); nameI.value = me.name; return; }
+    if (!Number.isFinite(w) || w <= 30) { showErr("That weight doesn't look right — enter your weight in kg."); wI.value = me.w; return; }
+    if (!Number.isFinite(ftp) || ftp <= 50) { showErr("That FTP doesn't look right — enter your FTP in watts."); ftpI.value = me.ftp; return; }
+    rerr.style.display = "none";
+    updRiderSelf(me.id, { name, w, ftp, pos: card.querySelector("#r-pos").value, build: card.querySelector("#r-build").value });
+  };
+  nameI.onblur = save;
+  card.querySelectorAll("#r-w,#r-ftp,#r-pos,#r-build").forEach((i) => (i.onchange = save));
+  left.appendChild(card);
+
+  const start = el(`<div class="panel"><div class="panel-hd"><h2>Your start</h2></div>
+    ${mine
+      ? `<div class="cr-field"><span>Your group</span><code>${mine.members.map((m) => esc(m.name)).join(" · ")}</code></div>
+         <div class="cr-field"><span>Rolls off at</span><code>${addClock(ev.firstStart, mine.offset)}</code></div>
+         <div class="cr-field"><span>Predicted time</span><code>${fmtDur(mine.dur)}</code></div>
+         <p class="micro">Seed ${mine.seed} of ${state.data.sheet.rows.length} · your share of the front is about ${Math.round((mine.members.find((m) => m.id === me.id)?.front || 0) * 100)}%.</p>`
+      : `<p class="empty">Your organiser hasn't put you in a group yet. Check back once they've set the groups.</p>`}
+    <p class="hint" style="margin-top:10px">Keep your rider link safe — it's how you get back in from another device.</p>
+    <div class="cr-field"><span>Your rider page</span><input readonly value="${riderLink(state.code, me.id, state.riderKey)}"/></div>
+  </div>`);
+  right.appendChild(start);
+}
+
 /* ---- rider self sign-up -------------------------------------------------- */
 function renderSignup() {
+  if (state.justSignedUp) return renderSignedUp();
   app.innerHTML = `<div class="center">
     <a class="ghost" href="/?code=${encodeURIComponent(state.code)}" style="align-self:flex-start">‹ Organiser view</a>
     <span class="kicker">Rider sign-up</span><h1 class="su-title">ADD YOUR DETAILS</h1>
     <label class="f">Event code<input id="code" value="${esc(state.code)}"/></label>
     <label class="f">Name<input id="name" placeholder="Your name"/></label>
     <div class="two"><label class="f">Weight (kg)<input type="number" id="w" value="75"/></label><label class="f">FTP (W)<input type="number" id="ftp" value="240"/></label></div>
-    <div class="two"><label class="f">Bike / position<select id="pos">${Object.entries(POSITIONS).map(([k, v]) => `<option value="${k}">${v}</option>`).join("")}</select></label>
-      <label class="f">Build<select id="build">${Object.entries(BUILDS).map(([k, v]) => `<option value="${k}">${v}</option>`).join("")}</select></label></div>
-    <p class="micro">Not sure of your FTP? Your best hour-power guess is fine.</p>
+    <div class="two"><label class="f">Bike / position<select id="pos">${Object.entries(POSITIONS).map(([k, v]) => `<option value="${k}" ${k === "road_drops" ? "selected" : ""}>${v}</option>`).join("")}</select></label>
+      <label class="f">Build<select id="build">${Object.entries(BUILDS).map(([k, v]) => `<option value="${k}" ${k === "medium" ? "selected" : ""}>${v}</option>`).join("")}</select></label></div>
+    <p class="micro">Not sure of your FTP? Your best hour-power guess is fine — you can fix it later.</p>
     <button class="btn block" id="send">Send to organiser</button><p class="hint" id="status"></p></div>`;
   document.getElementById("send").onclick = async () => {
     const code = document.getElementById("code").value.trim().toLowerCase();
@@ -317,7 +343,27 @@ function renderSignup() {
     const status = document.getElementById("status");
     if (!body.name.trim()) { status.textContent = "Add your name first."; return; }
     status.textContent = "Sending…";
-    try { await api("/events/" + encodeURIComponent(code) + "/riders", "POST", body); status.textContent = `Thanks ${body.name} — you're in. You can close this.`; }
+    try { await signUp(code, body); }
     catch (e) { status.textContent = e.message; }
   };
+}
+
+function renderSignedUp() {
+  const { name, id, code, key } = state.justSignedUp;
+  app.innerHTML = `<div class="landing"><div class="rule"></div>
+    <div class="land-head"><span class="kicker" style="color:#1f7a4d">You're in</span><h1>${esc(name)}</h1></div>
+    <div class="rule"></div>
+    ${state.banner ? `<div class="banner">${esc(state.banner)}</div>` : ""}
+    <div class="created">
+      <p class="hint">This link is yours. Open it any time to change your details — no need to bother the organiser.</p>
+      <div class="cr-field"><span>Your rider page</span><input readonly value="${riderLink(code, id, key)}"/></div>
+      <div class="row" style="margin:6px 0 4px"><a class="btn" id="email">✉ Email me my link</a><button class="add" id="copy">Copy my link</button></div>
+      <p class="micro">This device will remember you automatically. Save the link if you might use a different phone or computer — there's no way to look it up later.</p>
+      <button class="btn block" id="go" style="margin-top:12px">Open my rider page ›</button>
+    </div>
+    <p class="land-foot">Your organiser can see you in the rider list now.</p>
+  </div>`;
+  document.getElementById("email").href = riderMailto(name, code, id, key);
+  document.getElementById("copy").onclick = () => copyRiderDetails(name, code, id, key);
+  document.getElementById("go").onclick = openRiderPage;
 }

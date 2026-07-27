@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   DEFAULT_PARAMS, buildManualCourse, suggestGroups, computeSheet,
-  calibrationFactor, soloDuration, evenness, cdaOf,
+  soloDuration, evenness, cdaOf,
 } from "../../lib/engine.mjs";
 
 const p = DEFAULT_PARAMS;
@@ -47,11 +47,11 @@ test("evenness labels front-share distributions", () => {
 test("suggestGroups chunks riders slowest-first into groups of the given size, with a trailing leftover", () => {
   const course = buildManualCourse(20, 200);
   const riders = {
-    a: { id: "a", name: "A", w: 70, ftp: 100, pos: "road_drops", build: "medium", calib: 1 },
-    b: { id: "b", name: "B", w: 70, ftp: 200, pos: "road_drops", build: "medium", calib: 1 },
-    c: { id: "c", name: "C", w: 70, ftp: 300, pos: "road_drops", build: "medium", calib: 1 },
-    d: { id: "d", name: "D", w: 70, ftp: 400, pos: "road_drops", build: "medium", calib: 1 },
-    e: { id: "e", name: "E", w: 70, ftp: 500, pos: "road_drops", build: "medium", calib: 1 },
+    a: { id: "a", name: "A", w: 70, ftp: 100, pos: "road_drops", build: "medium" },
+    b: { id: "b", name: "B", w: 70, ftp: 200, pos: "road_drops", build: "medium" },
+    c: { id: "c", name: "C", w: 70, ftp: 300, pos: "road_drops", build: "medium" },
+    d: { id: "d", name: "D", w: 70, ftp: 400, pos: "road_drops", build: "medium" },
+    e: { id: "e", name: "E", w: 70, ftp: 500, pos: "road_drops", build: "medium" },
   };
   const { groups, leftover } = suggestGroups(["a", "b", "c", "d", "e"], riders, course.segments, p, 2);
   assert.deepEqual(groups, [["a", "b"], ["c", "d"]]);
@@ -61,10 +61,10 @@ test("suggestGroups chunks riders slowest-first into groups of the given size, w
 test("computeSheet seeds the slower group first (offset 0) and orders by offset", () => {
   const course = buildManualCourse(20, 200);
   const riders = {
-    a: { id: "a", name: "A", w: 70, ftp: 100, pos: "road_drops", build: "medium", calib: 1 },
-    b: { id: "b", name: "B", w: 70, ftp: 200, pos: "road_drops", build: "medium", calib: 1 },
-    c: { id: "c", name: "C", w: 70, ftp: 300, pos: "road_drops", build: "medium", calib: 1 },
-    d: { id: "d", name: "D", w: 70, ftp: 400, pos: "road_drops", build: "medium", calib: 1 },
+    a: { id: "a", name: "A", w: 70, ftp: 100, pos: "road_drops", build: "medium" },
+    b: { id: "b", name: "B", w: 70, ftp: 200, pos: "road_drops", build: "medium" },
+    c: { id: "c", name: "C", w: 70, ftp: 300, pos: "road_drops", build: "medium" },
+    d: { id: "d", name: "D", w: 70, ftp: 400, pos: "road_drops", build: "medium" },
   };
   const sheet = computeSheet(
     [{ id: "g1", members: ["a", "b"], locked: false }, { id: "g2", members: ["c", "d"], locked: false }],
@@ -81,14 +81,3 @@ test("computeSheet seeds the slower group first (offset 0) and orders by offset"
   assert.ok(Math.abs(sheet.tMin - sheet.rows[1].dur) < 1e-6);
 });
 
-test("calibrationFactor raises k when the rider rode faster than predicted, ~1 for an exact match", () => {
-  const course = buildManualCourse(20, 200);
-  const rider = { id: "x", name: "X", w: 70, ftp: 240, pos: "road_drops", build: "medium" };
-  const baseline = soloDuration({ ...rider, calib: 1 }, course.segments, p);
-
-  const kFaster = calibrationFactor(rider, course.segments, baseline * 0.9, p, 1);
-  assert.ok(kFaster > 1.1 && kFaster < 1.2, `expected ~1.14, got ${kFaster}`);
-
-  const kMatch = calibrationFactor(rider, course.segments, baseline, p, 1);
-  assert.ok(Math.abs(kMatch - 1) < 1e-6, `expected ~1, got ${kMatch}`);
-});
