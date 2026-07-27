@@ -12,8 +12,7 @@ const startCode = params.get("code") || LS.getItem("pursuit:lastCode") || "";
 const qRider = params.get("rider"), qKey = params.get("key");
 const storedRider = startCode ? LS.getItem(riderIdLS(startCode)) : null;
 // The rider id can arrive in the URL (sign-up link, own rider link) or, absent that,
-// from what we remembered last time — the Strava OAuth callback redirect carries the
-// rider id but never the key, so without this fallback that return trip is unreadable.
+// from what we remembered last time on this device.
 const riderId = qRider && /^\d+$/.test(qRider) ? Number(qRider)
   : storedRider && /^\d+$/.test(storedRider) ? Number(storedRider) : null;
 
@@ -35,18 +34,15 @@ export const state = {
   work: { groups: [], unassigned: [] },
   sel: null,
   saveStatus: "",
-  ridePicker: null,
   mode: riderId !== null && riderKey ? "rider" : (startCode ? "app" : "landing"),
   justCreated: null,
   justSignedUp: null,
-  banner: params.get("stravalinked") ? "Strava linked — you can refine your FTP now."
-    : params.get("stravaerror") === "nocookie" ? "Strava linking needs cookies enabled in your browser — turn them on and try again."
-    : params.get("stravaerror") ? "Strava linking failed." : "",
+  banner: "",
 };
 if (state.code) state.token = LS.getItem("pursuit:token:" + state.code) || "";
 
 export const el = (html) => { const t = document.createElement("template"); t.innerHTML = html.trim(); return t.content.firstChild; };
 
-export const ridersById = () => Object.fromEntries((state.data?.riders || []).map((r) => [r.id, { id: r.id, name: r.name, w: r.w, ftp: r.ftp, pos: r.pos, build: r.build, calib: r.calib }]));
+export const ridersById = () => Object.fromEntries((state.data?.riders || []).map((r) => [r.id, { id: r.id, name: r.name, w: r.w, ftp: r.ftp, pos: r.pos, build: r.build }]));
 export const paramsOf = () => state.data?.event?.params || {};
 export const segments = () => state.data?.event?.course?.segments;

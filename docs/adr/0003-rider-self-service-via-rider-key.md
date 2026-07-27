@@ -2,6 +2,12 @@
 status: accepted
 ---
 
+> **Partially superseded by [ADR-0004](0004-remove-strava-entirely.md).** Strava was
+> removed entirely, so every Strava-related amendment below — the nonce cookie, the
+> confirmation page, and the whole hijack sequence they were built to close — is
+> withdrawn along with it. The rider-key decision itself (a `rider_token` minted at
+> sign-up, mirroring the organiser token) still stands.
+
 # Rider self-service via a rider key, mirroring the organiser key
 
 **Context**: Riders could only be edited by the organiser — a confirmed oversight from

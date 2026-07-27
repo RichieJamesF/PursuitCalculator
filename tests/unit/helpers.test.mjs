@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { clampGroupSize, truncate, publicRider, engineRider, paramsOf, requireRiderOrOrg, readCookie } from "../../routes/helpers.js";
+import { clampGroupSize, truncate, publicRider, engineRider, paramsOf, requireRiderOrOrg } from "../../routes/helpers.js";
 
 test("clampGroupSize clamps to the 1-8 range and falls back when null", () => {
   assert.equal(clampGroupSize(0, 2), 1);
@@ -15,13 +15,13 @@ test("truncate slices strings to a max length and falls back when null", () => {
 });
 
 test("publicRider shapes a DB row for API responses", () => {
-  const row = { id: 1, name: "Ann", weight: 68, ftp: 220, pos: "road_drops", build: "medium", calib: 1.05, strava_athlete_id: 42, last_refined_at: "2026-01-01" };
-  assert.deepEqual(publicRider(row), { id: 1, name: "Ann", w: 68, ftp: 220, pos: "road_drops", build: "medium", calib: 1.05, strava: true, lastRefined: "2026-01-01" });
+  const row = { id: 1, name: "Ann", weight: 68, ftp: 220, pos: "road_drops", build: "medium" };
+  assert.deepEqual(publicRider(row), { id: 1, name: "Ann", w: 68, ftp: 220, pos: "road_drops", build: "medium" });
 });
 
 test("engineRider shapes a DB row for the physics engine", () => {
-  const row = { id: 1, name: "Ann", weight: 68, ftp: 220, pos: "road_drops", build: "medium", calib: 1.05 };
-  assert.deepEqual(engineRider(row), { id: 1, name: "Ann", w: 68, ftp: 220, pos: "road_drops", build: "medium", calib: 1.05 });
+  const row = { id: 1, name: "Ann", weight: 68, ftp: 220, pos: "road_drops", build: "medium" };
+  assert.deepEqual(engineRider(row), { id: 1, name: "Ann", w: 68, ftp: 220, pos: "road_drops", build: "medium" });
 });
 
 test("paramsOf merges stored params over defaults", () => {
@@ -100,53 +100,4 @@ test("requireRiderOrOrg rejects a missing organiser token even when event and ri
   const ok = requireRiderOrOrg({ organiser_token: "org1" }, { rider_token: "rid1" }, fakeReq({}), res);
   assert.equal(ok, false);
   assert.equal(res.code, 403);
-});
-
-test("readCookie returns null when the header is absent", () => {
-  assert.equal(readCookie(undefined, "pursuit_oauth_nonce"), null);
-  assert.equal(readCookie(null, "pursuit_oauth_nonce"), null);
-  assert.equal(readCookie("", "pursuit_oauth_nonce"), null);
-});
-
-test("readCookie reads a single cookie", () => {
-  assert.equal(readCookie("pursuit_oauth_nonce=abc123", "pursuit_oauth_nonce"), "abc123");
-});
-
-test("readCookie picks the right one out of several", () => {
-  const header = "a=1; pursuit_oauth_nonce=abc123; b=2";
-  assert.equal(readCookie(header, "pursuit_oauth_nonce"), "abc123");
-});
-
-test("readCookie trims surrounding whitespace around name and value", () => {
-  const header = "  a=1 ;  pursuit_oauth_nonce = abc123  ; b=2";
-  assert.equal(readCookie(header, "pursuit_oauth_nonce"), "abc123");
-});
-
-test("readCookie preserves a value that itself contains '='", () => {
-  const header = "pursuit_oauth_nonce=abc=123==";
-  assert.equal(readCookie(header, "pursuit_oauth_nonce"), "abc=123==");
-});
-
-test("readCookie doesn't false-match a name that's a prefix of the target", () => {
-  const header = "pursuit_oauth_nonce_v2=wrong; pursuit_oauth_nonce=right";
-  assert.equal(readCookie(header, "pursuit_oauth_nonce"), "right");
-});
-
-test("readCookie doesn't false-match a name that's a suffix of the target", () => {
-  const header = "old_pursuit_oauth_nonce=wrong; pursuit_oauth_nonce=right";
-  assert.equal(readCookie(header, "pursuit_oauth_nonce"), "right");
-});
-
-test("readCookie returns null when the named cookie isn't present", () => {
-  assert.equal(readCookie("a=1; b=2", "pursuit_oauth_nonce"), null);
-});
-
-test("readCookie returns the first value when a cookie name is duplicated", () => {
-  const header = "pursuit_oauth_nonce=first; pursuit_oauth_nonce=second";
-  assert.equal(readCookie(header, "pursuit_oauth_nonce"), "first");
-});
-
-test("readCookie returns an empty string for a present-but-empty cookie value", () => {
-  const header = "pursuit_oauth_nonce=; b=2";
-  assert.equal(readCookie(header, "pursuit_oauth_nonce"), "");
 });

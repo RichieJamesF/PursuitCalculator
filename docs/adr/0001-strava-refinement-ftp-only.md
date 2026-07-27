@@ -2,6 +2,9 @@
 status: accepted
 ---
 
+> **Superseded by [ADR-0004](0004-remove-strava-entirely.md).** Strava was removed from
+> the app entirely; nothing described below still exists.
+
 # Strava refinement: FTP-from-power only, drop time-based calibration
 
 **Context**: The app offered two ways to refine a rider's model from Strava — "Use time"

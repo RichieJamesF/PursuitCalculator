@@ -6,13 +6,6 @@ to converge into one bunch.
 
 ## Language
 
-**Refine**:
-The action of updating a rider's FTP directly from their linked Strava ride's power
-data — a real, sustained effort of at least 20 minutes (`MIN_EFFORT_SECONDS`).
-Triggerable by the rider themselves (via their [rider key](#language)) or by the
-organiser on their behalf. See [ADR-0001](docs/adr/0001-strava-refinement-ftp-only.md).
-_Avoid_: Calibrate, Use time (removed mode)
-
 **Organiser key**:
 The credential granting edit rights over an entire event — course, riders, groups,
 start-sheet. Minted once at event creation, shown once, remembered automatically in the
@@ -21,18 +14,11 @@ _Avoid_: Organiser token (the DB column/header name — "key" is the term shown 
 
 **Rider key**:
 The credential granting a rider edit rights over their own row only — name, weight, FTP,
-position, build, and their own Strava link/refine. Minted once at sign-up, shown once,
-remembered automatically in the signing-up browser. A lost rider key falls back to asking
-the organiser to delete and re-add the rider, the same recovery story as a lost organiser
-key. See [ADR-0003](docs/adr/0003-rider-self-service-via-rider-key.md).
+position, build. Minted once at sign-up, shown once, remembered automatically in the
+signing-up browser. A lost rider key falls back to asking the organiser to delete and
+re-add the rider, the same recovery story as a lost organiser key. See
+[ADR-0003](docs/adr/0003-rider-self-service-via-rider-key.md).
 _Avoid_: Rider token (DB column/header name), rider password
-
-**Calib**:
-A power multiplier stored per rider, always `1` as of ADR-0001. Historically set by a
-now-removed "Use time" mode that tried to back-solve it from an arbitrary ride's moving
-time; kept in the schema only because the engine's `powerOf` formula still multiplies by
-it. Not something any current flow writes a non-1 value into.
-_Avoid_: Calibration factor (as a live, tunable concept — it isn't one anymore)
 
 **Front share**:
 The fraction of total ride time a rider spends on the front of a pursuit group's rotating

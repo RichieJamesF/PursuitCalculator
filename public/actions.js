@@ -22,7 +22,7 @@ export function openExisting(code, key) {
   state.banner = ""; loadEvent();
 }
 
-export function toLanding() { state.mode = "landing"; state.justCreated = null; state.ridePicker = null; render(); }
+export function toLanding() { state.mode = "landing"; state.justCreated = null; render(); }
 
 export const origin = () => location.origin;
 
@@ -44,38 +44,11 @@ export const addRider = (r) => api("/events/" + state.code + "/riders", "POST", 
 export const updRider = (id, body) => api("/riders/" + id, "PATCH", body, true).then(loadEvent).catch((e) => alert(e.message));
 export const delRider = (id) => api("/riders/" + id, "DELETE", null, true).then(loadEvent).catch((e) => alert(e.message));
 
-export async function openRidePicker(id, auth = true) {
-  state.banner = "Looking through your recent rides…"; render();
-  try {
-    const r = await api("/riders/" + id + "/rides", "GET", null, auth);
-    state.ridePicker = { riderId: id, rides: r.rides, suggestedId: r.suggestedId, minMinutes: r.minMinutes, auth };
-    state.banner = ""; render();
-  } catch (e) { state.banner = e.message; render(); }
-}
-
-export function bannerFromRefine(r) {
-  if (!r.matched) return r.message;
-  const src = r.hadPower ? "power meter" : "Strava's power estimate";
-  return `FTP set to ${r.ftp} W from “${r.activity}” (${src}).`;
-}
-
-export async function applyRefine(id, activityId, auth = true) {
-  state.ridePicker = null; state.banner = "Reading that ride…"; render();
-  try { const r = await api("/riders/" + id + "/refine", "POST", { activityId }, auth); state.banner = bannerFromRefine(r); await loadEvent(); }
-  catch (e) { state.banner = e.message; render(); }
-}
-
-export async function autoRefine(id, auth = true) {
-  state.ridePicker = null; state.banner = "Finding your hardest recent effort…"; render();
-  try { const r = await api("/riders/" + id + "/refine", "POST", {}, auth); state.banner = bannerFromRefine(r); await loadEvent(); }
-  catch (e) { state.banner = e.message; render(); }
-}
-
 export const riderLink = (code, id, key) =>
   `${origin()}/?code=${encodeURIComponent(code)}&rider=${id}&key=${encodeURIComponent(key)}`;
 
 export function riderMailto(name, code, id, key) {
-  const body = `Your rider link for this Pursuit event — open it any time to change your weight, FTP or bike, link Strava, or update your FTP from a ride.\n\n`
+  const body = `Your rider link for this Pursuit event — open it any time to change your weight, FTP or bike.\n\n`
     + `Rider: ${name}\nEvent code: ${code}\nYour rider key: ${key}\n\n`
     + `Your rider page: ${riderLink(code, id, key)}\n\n`
     + `Keep this link. It's the only way back in from another device.\n`;
@@ -111,6 +84,3 @@ export function openRiderPage() {
 
 export const updRiderSelf = (id, body) =>
   api("/riders/" + id, "PATCH", body, "rider").then(loadEvent).catch((e) => alert(e.message));
-
-export const unlinkStrava = (id, auth) =>
-  api("/riders/" + id + "/strava", "DELETE", null, auth).then(loadEvent).catch((e) => alert(e.message));

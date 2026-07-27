@@ -1,7 +1,7 @@
 import { cdaOf } from "/engine.mjs";
 import { state, app, POSITIONS, BUILDS, SHADES, el, ridersById, LS } from "./state.js";
 import { esc, fmtDur, fmtGap, addClock } from "./format.js";
-import { toLanding, detailsMailto, copyDetails, createEvent, openExisting, patchEvent, addRider, updRider, delRider, openRidePicker, autoRefine, applyRefine, origin, signUp, riderLink, riderMailto, copyRiderDetails, openRiderPage, updRiderSelf, unlinkStrava } from "./actions.js";
+import { toLanding, detailsMailto, copyDetails, createEvent, openExisting, patchEvent, addRider, updRider, delRider, origin, signUp, riderLink, riderMailto, copyRiderDetails, openRiderPage, updRiderSelf } from "./actions.js";
 import { api, savedEvents } from "./api.js";
 import { suggestLocal, clearGroups, newGroup, moveTo, toggleLock, breakGroup, goSolo, joinBest, onPick, localSheet, exportCSV } from "./grouping.js";
 import { parseCourseFile } from "./course.js";
@@ -62,63 +62,11 @@ export function render() {
   const sheet = localSheet();
   right.appendChild(groupsPanel(ev, canEdit, sheet));
   right.appendChild(boardEl(ev, canEdit, sheet));
-
-  if (state.ridePicker) app.appendChild(ridePickerEl());
-}
-
-function ridePickerEl() {
-  const { riderId, rides, suggestedId, minMinutes, auth } = state.ridePicker;
-  const rider = ridersById()[riderId];
-  const suggested = rides.find((r) => r.id === suggestedId) || null;
-  const others = rides.filter((r) => r.id !== suggestedId);
-  const shortDate = (d) => new Date(d).toLocaleDateString(undefined, { day: "numeric", month: "short" });
-  const powerLabel = (rd) => rd.ftpEstimate == null ? "no power data"
-    : `${rd.ftpEstimate} W · ${rd.hasPower ? "power meter" : "Strava estimate"}`;
-  const why = (rd) => rd.eligible ? "" : rd.ftpEstimate == null ? "no power data"
-    : `under ${minMinutes} min`;
-
-  const overlay = el(`<div class="modal-back"><div class="modal">
-    <div class="modal-hd"><div><span class="kicker">Set FTP from a ride</span><h2>${esc(rider?.name || "Rider")}</h2></div><button class="modal-x" id="close">×</button></div>
-    <div id="suggestion"></div>
-    <div class="modal-tools"><span class="hint">Or pick a different ride — it needs power data and at least ${minMinutes} minutes.</span></div>
-    <div class="ridelist" id="ridelist"></div>
-  </div></div>`);
-  overlay.querySelector("#close").onclick = () => { state.ridePicker = null; render(); };
-  overlay.onclick = (e) => { if (e.target === overlay) { state.ridePicker = null; render(); } };
-
-  const sug = overlay.querySelector("#suggestion");
-  if (suggested) {
-    const box = el(`<div class="ridecard match">
-      <div class="ride-main"><span class="kicker">Your hardest recent effort</span>
-        <b>${esc(suggested.name)}</b>
-        <span class="ride-sub">${shortDate(suggested.date)} · ${suggested.distanceKm} km · ${fmtDur(suggested.movingTime)} · ${powerLabel(suggested)}</span></div>
-      <p class="hint">This sets your FTP to <b>${suggested.ftpEstimate} W</b>.</p>
-      <div class="ride-acts"><button class="btn" id="usesug">Use this ride</button></div></div>`);
-    box.querySelector("#usesug").onclick = () => autoRefine(riderId, auth);
-    sug.appendChild(box);
-  } else {
-    sug.appendChild(el(`<p class="empty">No ride in the last 6 weeks has power data and lasts ${minMinutes} minutes or more. Pick one below if you think it's a fair effort, or type your FTP in by hand instead.</p>`));
-  }
-
-  const list = overlay.querySelector("#ridelist");
-  if (!others.length) list.innerHTML = `<p class="empty">No other rides in the last 6 weeks.</p>`;
-  others.forEach((rd) => {
-    const reason = why(rd);
-    const card = el(`<div class="ridecard ${rd.eligible ? "" : "dim"}">
-      <div class="ride-main"><b>${esc(rd.name)}</b>
-        <span class="ride-sub">${shortDate(rd.date)} · ${rd.distanceKm} km · ${fmtDur(rd.movingTime)} · ${powerLabel(rd)}</span></div>
-      <div class="ride-tags">${rd.commute ? `<span class="tg tg-com">commute</span>` : ""}${rd.hasPower ? `<span class="tg tg-pow">power meter</span>` : ""}${reason ? `<span class="tg tg-reason">${esc(reason)}</span>` : ""}</div>
-      <div class="ride-acts"><button class="add use" ${rd.eligible ? "" : "disabled"} title="${rd.eligible ? "Set your FTP from this ride" : `Can't use this ride — ${reason}`}">${rd.eligible ? "Use this ride" : "Can't use"}</button></div></div>`);
-    const btn = card.querySelector(".use");
-    if (rd.eligible) btn.onclick = () => applyRefine(riderId, rd.id, auth);
-    list.appendChild(card);
-  });
-  return overlay;
 }
 
 function coursePanel(ev, canEdit, km, asc) {
   const cs = el(`<div class="panel"><div class="panel-hd"><h2>Course</h2></div>
-    <div class="drop" id="drop" tabindex="0" role="button"><b>Drop a GPX or FIT — or tap to choose</b><span>Strava route → Export GPX, or a Wahoo/Garmin .fit off the head unit.</span></div>
+    <div class="drop" id="drop" tabindex="0" role="button"><b>Drop a GPX or FIT — or tap to choose</b><span>Export a GPX from your ride computer or app, or a Wahoo/Garmin .fit off the head unit.</span></div>
     <input type="file" id="file" accept=".gpx,.fit" hidden/>
     <p class="err" id="cerr" style="display:none"></p>
     <div class="two" style="margin-top:12px"><label class="f">Distance (km)<input type="number" id="km" value="${ev.course ? (ev.course.distanceM / 1000).toFixed(1) : 45}"/></label><label class="f">Total ascent (m)<input type="number" id="asc" value="${ev.course ? Math.round(ev.course.ascentM) : 500}"/></label></div>
@@ -217,16 +165,12 @@ function riderRow(r, canEdit) {
       <label class="rf"><span>Bike</span><select class="pos" ${canEdit ? "" : "disabled"}>${Object.entries(POSITIONS).map(([k, v]) => `<option value="${k}" ${k === r.pos ? "selected" : ""}>${v}</option>`).join("")}</select></label>
       <label class="rf"><span>Build</span><select class="build" ${canEdit ? "" : "disabled"}>${Object.entries(BUILDS).map(([k, v]) => `<option value="${k}" ${k === r.build ? "selected" : ""}>${v}</option>`).join("")}</select></label>
       ${canEdit ? `<button class="del" title="Remove">×</button>` : ""}</div>
-    <div class="rr-tools"><span class="pill ${r.strava ? "on" : "off"}">${r.strava ? "Strava linked" : "No Strava"}</span>
-      <span class="micro">${wkg} W/kg${r.lastRefined ? ` · FTP from Strava ${esc(new Date(r.lastRefined).toLocaleDateString())}` : ""}</span>
-      ${canEdit ? `<a class="ghost" href="/auth/strava?code=${encodeURIComponent(state.code)}&rider=${r.id}&key=${encodeURIComponent(state.token)}">${r.strava ? "Re-link" : "Link Strava"}</a>` : ""}
-      ${canEdit && r.strava ? `<button class="ghost refine" title="Set this rider's FTP from one of their Strava rides">Set FTP from Strava</button>` : ""}</div></div>`);
+    <div class="rr-tools"><span class="micro">${wkg} W/kg</span></div></div>`);
   if (canEdit) {
     const save = () => updRider(r.id, { name: row.querySelector(".rr-name").value, w: +row.querySelector(".w").value, ftp: +row.querySelector(".ftp").value, pos: row.querySelector(".pos").value, build: row.querySelector(".build").value });
     row.querySelector(".rr-name").onblur = save;
     row.querySelectorAll(".w,.ftp,.pos,.build").forEach((i) => (i.onchange = save));
     row.querySelector(".del").onclick = () => confirm(`Remove ${r.name}?`) && delRider(r.id);
-    const rf = row.querySelector(".refine"); if (rf) rf.onclick = () => openRidePicker(r.id);
   }
   return row;
 }
@@ -367,21 +311,6 @@ function renderRiderPage() {
   card.querySelectorAll("#r-w,#r-ftp,#r-pos,#r-build").forEach((i) => (i.onchange = save));
   left.appendChild(card);
 
-  const sv = el(`<div class="panel"><div class="panel-hd"><h2>FTP from Strava</h2></div>
-    <p class="hint">${me.strava
-      ? "Linked. Pick a recent hard ride and we'll read your FTP off its power data — no typing, no guessing."
-      : "Link Strava once, then your FTP can come straight off a recent hard ride instead of a guess."}</p>
-    <div class="row">
-      <a class="add" href="/auth/strava?code=${encodeURIComponent(state.code)}&rider=${me.id}&key=${encodeURIComponent(state.riderKey)}">${me.strava ? "Re-link Strava" : "Link Strava"}</a>
-      ${me.strava ? `<button class="btn" id="r-refine">Update my FTP from a ride</button>` : ""}
-      ${me.strava ? `<button class="ghost" id="r-unlink">Unlink Strava</button>` : ""}
-    </div>
-    ${me.lastRefined ? `<p class="micro">Last updated from Strava on ${esc(new Date(me.lastRefined).toLocaleDateString())}.</p>` : ""}
-  </div>`);
-  const rb = sv.querySelector("#r-refine"); if (rb) rb.onclick = () => openRidePicker(me.id, "rider");
-  const ub = sv.querySelector("#r-unlink"); if (ub) ub.onclick = () => { if (confirm("Unlink Strava? You'll need to re-link before refining your FTP from a ride again.")) unlinkStrava(me.id, "rider"); };
-  left.appendChild(sv);
-
   const start = el(`<div class="panel"><div class="panel-hd"><h2>Your start</h2></div>
     ${mine
       ? `<div class="cr-field"><span>Your group</span><code>${mine.members.map((m) => esc(m.name)).join(" · ")}</code></div>
@@ -393,8 +322,6 @@ function renderRiderPage() {
     <div class="cr-field"><span>Your rider page</span><input readonly value="${riderLink(state.code, me.id, state.riderKey)}"/></div>
   </div>`);
   right.appendChild(start);
-
-  if (state.ridePicker) app.appendChild(ridePickerEl());
 }
 
 /* ---- rider self sign-up -------------------------------------------------- */
@@ -408,7 +335,7 @@ function renderSignup() {
     <div class="two"><label class="f">Weight (kg)<input type="number" id="w" value="75"/></label><label class="f">FTP (W)<input type="number" id="ftp" value="240"/></label></div>
     <div class="two"><label class="f">Bike / position<select id="pos">${Object.entries(POSITIONS).map(([k, v]) => `<option value="${k}" ${k === "road_drops" ? "selected" : ""}>${v}</option>`).join("")}</select></label>
       <label class="f">Build<select id="build">${Object.entries(BUILDS).map(([k, v]) => `<option value="${k}" ${k === "medium" ? "selected" : ""}>${v}</option>`).join("")}</select></label></div>
-    <p class="micro">Not sure of your FTP? Your best hour-power guess is fine — you can fix it later, or read it off a Strava ride.</p>
+    <p class="micro">Not sure of your FTP? Your best hour-power guess is fine — you can fix it later.</p>
     <button class="btn block" id="send">Send to organiser</button><p class="hint" id="status"></p></div>`;
   document.getElementById("send").onclick = async () => {
     const code = document.getElementById("code").value.trim().toLowerCase();
@@ -428,7 +355,7 @@ function renderSignedUp() {
     <div class="rule"></div>
     ${state.banner ? `<div class="banner">${esc(state.banner)}</div>` : ""}
     <div class="created">
-      <p class="hint">This link is yours. Open it any time to change your details, link Strava, or set your FTP from a ride — no need to bother the organiser.</p>
+      <p class="hint">This link is yours. Open it any time to change your details — no need to bother the organiser.</p>
       <div class="cr-field"><span>Your rider page</span><input readonly value="${riderLink(code, id, key)}"/></div>
       <div class="row" style="margin:6px 0 4px"><a class="btn" id="email">✉ Email me my link</a><button class="add" id="copy">Copy my link</button></div>
       <p class="micro">This device will remember you automatically. Save the link if you might use a different phone or computer — there's no way to look it up later.</p>

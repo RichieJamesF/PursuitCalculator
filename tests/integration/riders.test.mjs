@@ -27,7 +27,6 @@ describe("riders routes", () => {
     assert.equal(body.name, "Alex");
     assert.equal(body.w, 70);
     assert.equal(body.ftp, 250);
-    assert.equal(body.strava, false);
   });
 
   test("POST /api/events/:code/riders rejects a missing name", async () => {

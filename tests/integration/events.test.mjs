@@ -1,7 +1,6 @@
 import { test, describe, beforeEach, afterEach, after } from "node:test";
 import assert from "node:assert/strict";
 import { startTestServer, stopTestServer, closePool } from "./helpers.mjs";
-import { initDb, q } from "../../db.js";
 
 describe("events routes", () => {
   let ctx;
@@ -81,24 +80,5 @@ describe("events routes", () => {
     const body = await res.json();
     assert.equal(body.event.name, "Renamed");
     assert.equal(body.event.groupSize, 3);
-  });
-
-  test("running the schema resets any leftover calibration multiplier to 1", async () => {
-    await fetch(`${ctx.baseUrl}/api/events`, {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: "Calib reset", code: "calib-reset" }),
-    });
-    await fetch(`${ctx.baseUrl}/api/events/calib-reset/riders`, {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: "Legacy" }),
-    });
-    // 1.25 is exactly representable in float4, so the REAL column round-trips it
-    // without the surprise you'd get from e.g. 1.4
-    await q("UPDATE riders SET calib=1.25");
-    assert.equal((await q("SELECT calib FROM riders")).rows[0].calib, 1.25);
-
-    await initDb();
-
-    assert.equal((await q("SELECT calib FROM riders")).rows[0].calib, 1);
   });
 });

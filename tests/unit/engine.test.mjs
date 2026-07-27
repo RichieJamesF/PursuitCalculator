@@ -47,11 +47,11 @@ test("evenness labels front-share distributions", () => {
 test("suggestGroups chunks riders slowest-first into groups of the given size, with a trailing leftover", () => {
   const course = buildManualCourse(20, 200);
   const riders = {
-    a: { id: "a", name: "A", w: 70, ftp: 100, pos: "road_drops", build: "medium", calib: 1 },
-    b: { id: "b", name: "B", w: 70, ftp: 200, pos: "road_drops", build: "medium", calib: 1 },
-    c: { id: "c", name: "C", w: 70, ftp: 300, pos: "road_drops", build: "medium", calib: 1 },
-    d: { id: "d", name: "D", w: 70, ftp: 400, pos: "road_drops", build: "medium", calib: 1 },
-    e: { id: "e", name: "E", w: 70, ftp: 500, pos: "road_drops", build: "medium", calib: 1 },
+    a: { id: "a", name: "A", w: 70, ftp: 100, pos: "road_drops", build: "medium" },
+    b: { id: "b", name: "B", w: 70, ftp: 200, pos: "road_drops", build: "medium" },
+    c: { id: "c", name: "C", w: 70, ftp: 300, pos: "road_drops", build: "medium" },
+    d: { id: "d", name: "D", w: 70, ftp: 400, pos: "road_drops", build: "medium" },
+    e: { id: "e", name: "E", w: 70, ftp: 500, pos: "road_drops", build: "medium" },
   };
   const { groups, leftover } = suggestGroups(["a", "b", "c", "d", "e"], riders, course.segments, p, 2);
   assert.deepEqual(groups, [["a", "b"], ["c", "d"]]);
@@ -61,10 +61,10 @@ test("suggestGroups chunks riders slowest-first into groups of the given size, w
 test("computeSheet seeds the slower group first (offset 0) and orders by offset", () => {
   const course = buildManualCourse(20, 200);
   const riders = {
-    a: { id: "a", name: "A", w: 70, ftp: 100, pos: "road_drops", build: "medium", calib: 1 },
-    b: { id: "b", name: "B", w: 70, ftp: 200, pos: "road_drops", build: "medium", calib: 1 },
-    c: { id: "c", name: "C", w: 70, ftp: 300, pos: "road_drops", build: "medium", calib: 1 },
-    d: { id: "d", name: "D", w: 70, ftp: 400, pos: "road_drops", build: "medium", calib: 1 },
+    a: { id: "a", name: "A", w: 70, ftp: 100, pos: "road_drops", build: "medium" },
+    b: { id: "b", name: "B", w: 70, ftp: 200, pos: "road_drops", build: "medium" },
+    c: { id: "c", name: "C", w: 70, ftp: 300, pos: "road_drops", build: "medium" },
+    d: { id: "d", name: "D", w: 70, ftp: 400, pos: "road_drops", build: "medium" },
   };
   const sheet = computeSheet(
     [{ id: "g1", members: ["a", "b"], locked: false }, { id: "g2", members: ["c", "d"], locked: false }],

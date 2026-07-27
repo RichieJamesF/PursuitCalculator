@@ -5,20 +5,15 @@ import { initDb } from "./db.js";
 import eventsRouter from "./routes/events.js";
 import ridersRouter from "./routes/riders.js";
 import groupsRouter from "./routes/groups.js";
-import stravaRouter from "./routes/strava.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 export function createApp() {
   const app = express();
-  // The organiser's own Strava link carries their edit-everything key in a query string
-  // (see ADR-0003) that then 302s to strava.com; a legacy no-referrer-when-downgrade
-  // default would leak that whole URL cross-origin, so pin the policy explicitly.
+  // Organiser and rider keys travel in query strings (ADR-0003); pin an explicit
+  // no-referrer policy rather than relying on the browser's default.
   app.use((_req, res, next) => { res.setHeader("Referrer-Policy", "no-referrer"); res.setHeader("X-Frame-Options", "DENY"); next(); });
   app.use(express.json({ limit: "1mb" }));
-  // The /auth/strava confirmation page POSTs a plain HTML form (application/x-www-form-urlencoded),
-  // not JSON — express.json() alone leaves req.body empty for that request.
-  app.use(express.urlencoded({ extended: false }));
   app.use(express.static(path.join(__dirname, "public"), {
     setHeaders: (res, p) => { if (/\.(js|mjs|css|html)$/.test(p)) res.setHeader("Cache-Control", "no-cache"); },
   }));
@@ -26,7 +21,6 @@ export function createApp() {
   app.use(eventsRouter);
   app.use(ridersRouter);
   app.use(groupsRouter);
-  app.use(stravaRouter);
 
   // serve the shared engine to the browser (single source of truth, no duplication)
   app.get("/engine.mjs", (_req, res) => { res.setHeader("Cache-Control", "no-cache"); res.type("application/javascript").sendFile(path.join(__dirname, "lib", "engine.mjs")); });

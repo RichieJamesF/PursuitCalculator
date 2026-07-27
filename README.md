@@ -2,8 +2,7 @@
 
 Multi-user handicap start-sheet calculator. Organisers create an event, riders
 sign themselves in, the app tiers them into fair groups (1–8 per group) and
-seeds start gaps so everyone converges in one bunch. Riders can link Strava so
-their model is refined from real rides.
+seeds start gaps so everyone converges in one bunch.
 
 Same physics engine as the standalone app (`lib/engine.mjs`), so predictions
 match. The server does the computing; the browser just renders.
@@ -12,11 +11,10 @@ match. The server does the computing; the browser just renders.
 
 ```
 server.js          App assembly (createApp()) + bootstrap
-routes/            Express routers by resource (events, riders, groups,
-                    strava) + routes/helpers.js (shared DB/response helpers)
+routes/            Express routers by resource (events, riders, groups)
+                    + routes/helpers.js (shared DB/response helpers)
 db.js / schema.sql Postgres pool and tables (events, riders)
-lib/engine.mjs     N-up paceline physics, grouping, start-sheet, calibration
-lib/strava.mjs     Strava OAuth + activity fetch/match
+lib/engine.mjs     N-up paceline physics, grouping, start-sheet seeding
 public/            Organiser UI + rider sign-up page (no build step),
                     split into feature modules (state, api, actions,
                     grouping, views)
@@ -32,12 +30,8 @@ tests/integration/ API route tests against a real, disposable local Postgres
    (or `railway up` with the CLI).
 2. **Add the Postgres plugin** — Railway sets `DATABASE_URL` automatically. The
    schema is created on first boot.
-3. Create a Strava API app at https://www.strava.com/settings/api. Set its
-   **Authorization Callback Domain** to your Railway host (e.g.
-   `your-app.up.railway.app`, no `https://`).
-4. Set env vars (see `.env.example`): `BASE_URL`, `STRAVA_CLIENT_ID`,
-   `STRAVA_CLIENT_SECRET`. `PORT` is provided by Railway.
-5. Deploy. Start command is `npm start`.
+3. Set env vars (see `.env.example`): `BASE_URL`. `PORT` is provided by Railway.
+4. Deploy. Start command is `npm start`.
 
 Run locally: `npm install`, set the vars in a `.env` (or your shell), point
 `DATABASE_URL` at a local Postgres, then `node server.js`.
@@ -53,13 +47,8 @@ Run locally: `npm install`, set the vars in a `.env` (or your shell), point
   (see `docs/adr/0002-drop-per-event-physics-tuning.md`).
 - **Riders manage themselves**: each rider gets their own link and key at sign-up
   (shown once, remembered on that device). From it they can fix their weight, FTP,
-  bike and build, link Strava, set their FTP from a ride, and see their group and
-  roll-off time — none of it routed through the organiser.
-- **Strava**: linking is per rider. "Set FTP from Strava" offers the rider's hardest
-  recent qualifying effort — power data present, at least 20 minutes long — and states
-  the exact FTP it will set. Rides that are too short or have no power are listed but
-  can't be used. There is no time-based calibration; see
-  `docs/adr/0001-strava-refinement-ftp-only.md`.
+  bike and build, and see their group and roll-off time — none of it routed
+  through the organiser.
 - **CSV / Print** for the race-day sheet.
 
 ## API
@@ -73,24 +62,15 @@ PATCH  /api/riders/:id                 (org | self)
 DELETE /api/riders/:id                 (org | self)
 POST   /api/events/:code/suggest       (org)  {size?}     compute + store groups
 PUT    /api/events/:code/groups        (org)  {groups}    save a manual arrangement
-GET    /auth/strava?code=&rider=&key=                     confirm page naming the rider + event (key = organiser or rider key)
-POST   /auth/strava                    {code,rider,key,nonce}  start OAuth once confirmed
-GET    /auth/strava/callback                              store tokens
-GET    /api/riders/:id/rides           (org | self)       recent rides, hardest usable effort first
-POST   /api/riders/:id/refine          (org | self)  {activityId?}   set FTP from a ride's power
-DELETE /api/riders/:id/strava          (org | self)       unlink Strava (clears stored tokens)
 ```
 
 Organiser routes require the `x-organiser-token` header. Rider routes accept either
-that or the rider's own `x-rider-token`. `/auth/strava` is a browser navigation and
-so takes the key as a `key=` query param instead of a header. The GET only renders a
-confirmation page naming the rider and event being linked; the POST it submits to
-(same path) is what actually starts the OAuth round-trip — see "Honest status" below.
+that or the rider's own `x-rider-token`.
 
 ## Testing
 
 - `npm test` — fast unit tests (`tests/unit/`), no DB required: the physics/
-  grouping/calibration engine, GPX/FIT course parsing, and the shared route
+  grouping engine, GPX/FIT course parsing, and the shared route
   helpers/validators.
 - `npm run test:integration` — API route tests (`tests/integration/`) against
   a real Postgres, spun up on the fly by `embedded-postgres` (a real Postgres
@@ -100,60 +80,20 @@ confirmation page naming the rider and event being linked; the POST it submits t
 
 ## Honest status
 
-The **engine, grouping, start-sheet seeding, the Strava ride model (FTP
-eligibility and suggestion picking), and the browser GPX parser are unit
-tested** (headless). The **`.fit` parser is tested for its error path**
+The **engine, grouping, start-sheet seeding, and the browser GPX parser are
+unit tested** (headless). The **`.fit` parser is tested for its error path**
 (rejects a file with no GPS records) but not against a real device file.
 The **organiser UI's group-edit operations** (swap, move, lock, suggest —
 `public/grouping.js`) run client-side and are exercised manually, but have
-no automated test coverage yet. **Events, riders, groups and the Strava
-auth checks have integration tests** against a real Postgres
-(`embedded-postgres`, no Docker — `npm run test:integration`): event
-create/fetch/patch (incl. the duplicate-code 409 case), rider CRUD under
-organiser-or-self auth, group suggest/save, and the `/auth/strava` key
-checks (missing/empty/wrong/cross-rider/cross-event key, the confirmation
-page rendering and escaping the rider/event names, the double-submit nonce
-check on the POST, and the nonce-cookie binding at the callback: no cookie,
-wrong cookie, and an old-format state with no nonce, all refused before the
-token exchange runs — plus a full happy-path walk of confirm page -> POST ->
-callback that asserts a token is actually written). One case from the
-original plan isn't tested —
+no automated test coverage yet. **Events, riders and groups have integration
+tests** against a real Postgres (`embedded-postgres`, no Docker —
+`npm run test:integration`): event create/fetch/patch (incl. the
+duplicate-code 409 case), rider CRUD under organiser-or-self auth, and group
+suggest/save. One case from the original plan isn't tested —
 `POST /api/events/:code/suggest` "requires a course first" — because every
 event gets a default course on creation, so that guard is currently
 unreachable via the public API; see the comment in
-`tests/integration/groups.test.mjs`. What automated tests can't cover is the
-live Strava round-trip itself — OAuth against a real account and reading
-power off real activities — so verify that by hand with `STRAVA_CLIENT_ID`,
-`STRAVA_CLIENT_SECRET` and `BASE_URL` set.
-
-**Strava linking is confirmed on this app's own page before it does anything.**
-Signing the OAuth `state` proves the server issued it, and binding it to a
-cookie proves the same browser that started the flow finished it — but neither
-stops an attacker sending a victim *this app's own* `/auth/strava?code=&rider=&key=`
-link: the victim's browser would honestly mint the nonce, hold the cookie, and
-pass the callback check, while the tokens still land on whichever rider the
-attacker named in the query string. See the amendment (and its follow-up) at
-the bottom of `docs/adr/0003-rider-self-service-via-rider-key.md` for the full
-attack and why browser-binding alone can't close it.
-
-So `GET /auth/strava` no longer redirects to Strava. It runs the same key
-checks as before, then renders a confirmation page on this app's own origin
-naming the rider and event about to be linked, with a form that `POST`s back
-to the same path. Only that POST mints the signed `state` and redirects to
-Strava — a bookmarked or re-sent GET is harmless. The GET also mints the nonce
-and sets it as a short-lived, path-scoped, `HttpOnly`, `SameSite=Lax` cookie
-(`Secure` only when the deployment is HTTPS — Railway terminates TLS at a
-proxy, so this is derived from `baseUrl(req)`, not `req.secure`), embedding the
-same value in a hidden form field. The POST re-runs the identical key checks
-(it doesn't trust that the GET ran) and compares the form nonce against the
-cookie nonce — a double-submit check — before signing `state` with that nonce.
-`SameSite=Lax` already blocks a cross-site auto-POST here; the double-submit
-compare is belt-and-braces for anything that doesn't honour `SameSite`. The
-callback then compares the cookie against the state's nonce with a
-timing-safe check *before* calling Strava's token exchange, so a refused flow
-never contacts Strava, then clears the cookie either way. A rider whose
-browser blocks cookies gets a distinct `stravaerror=nocookie` banner naming
-the cause rather than the generic failure message.
+`tests/integration/groups.test.mjs`.
 
 The organiser UI now matches the standalone app: tap a rider then another to
 swap, "+ here" to move between groups, lock/break groups, an unassigned bench,

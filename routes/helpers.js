@@ -47,9 +47,9 @@ export async function getRider(riderId) {
   return rows[0] || null;
 }
 
-export const publicRider = (r) => ({ id: r.id, name: r.name, w: r.weight, ftp: r.ftp, pos: r.pos, build: r.build, calib: r.calib, strava: !!r.strava_athlete_id, lastRefined: r.last_refined_at });
+export const publicRider = (r) => ({ id: r.id, name: r.name, w: r.weight, ftp: r.ftp, pos: r.pos, build: r.build });
 
-export const engineRider = (r) => ({ id: r.id, name: r.name, w: r.weight, ftp: r.ftp, pos: r.pos, build: r.build, calib: r.calib });
+export const engineRider = (r) => ({ id: r.id, name: r.name, w: r.weight, ftp: r.ftp, pos: r.pos, build: r.build });
 
 export const engineRidersById = (riders) => Object.fromEntries(riders.map((r) => [r.id, engineRider(r)]));
 
@@ -87,16 +87,3 @@ export async function eventPayload(ev) {
 }
 
 export const asyncRoute = (fn) => (req, res, next) => { Promise.resolve(fn(req, res, next)).catch(next); };
-
-// Pull one named cookie out of a raw `Cookie` header without pulling in cookie-parser.
-// Split on ";" first so a name that's a prefix/suffix of another (e.g. "pursuit_oauth_nonce"
-// vs "pursuit_oauth_nonce_v2") can't false-match the way an unanchored split or .includes would.
-export function readCookie(header, name) {
-  if (!header) return null;
-  for (const part of header.split(";")) {
-    const i = part.indexOf("=");
-    if (i === -1) continue;
-    if (part.slice(0, i).trim() === name) return part.slice(i + 1).trim();
-  }
-  return null;
-}
