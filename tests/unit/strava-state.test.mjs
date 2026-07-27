@@ -25,6 +25,15 @@ test("signState and verifyState round-trip the payload", async () => {
   restoreSecret();
 });
 
+test("signState and verifyState round-trip a nonce field intact", async () => {
+  process.env.STRAVA_CLIENT_SECRET = "test-secret";
+  const signed = signState({ code: "test-code", rider: 42, ts: Date.now(), nonce: "deadbeef0123" });
+  const verified = verifyState(signed);
+  assert.ok(verified);
+  assert.equal(verified.nonce, "deadbeef0123");
+  restoreSecret();
+});
+
 test("signState throws when STRAVA_CLIENT_SECRET is missing", async () => {
   delete process.env.STRAVA_CLIENT_SECRET;
   assert.throws(() => signState({ code: "test", rider: 1, ts: Date.now() }), /STRAVA_CLIENT_SECRET is required/);

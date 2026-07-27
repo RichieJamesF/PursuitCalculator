@@ -1,9 +1,23 @@
+import crypto from "node:crypto";
 import express from "express";
 import { q } from "../db.js";
-import { eventForRider, getRider, requireRiderOrOrg, baseUrl, asyncRoute } from "./helpers.js";
-import { authUrl, exchange, refresh, recentActivities, activity, signState, verifyState } from "../lib/strava.mjs";
+import { eventForRider, getRider, requireRiderOrOrg, baseUrl, readCookie, asyncRoute } from "./helpers.js";
+import { authUrl, exchange, refresh, recentActivities, activity, signState, verifyState, STATE_EXPIRY_MINUTES } from "../lib/strava.mjs";
 
 const router = express.Router();
+
+// Binds the OAuth round-trip to the browser that started it (see ADR-0003 amendment):
+// a signed state only proves the server issued it, not that whoever finishes the flow
+// is who started it. Path-scoped so it never rides along on unrelated requests.
+const NONCE_COOKIE = "pursuit_oauth_nonce";
+const NONCE_COOKIE_PATH = "/auth/strava";
+const NONCE_MAX_AGE_MS = STATE_EXPIRY_MINUTES * 60 * 1000;
+
+// timingSafeEqual throws on unequal-length buffers rather than returning false.
+function safeEqual(a, b) {
+  const ab = Buffer.from(a), bb = Buffer.from(b);
+  return ab.length === bb.length && crypto.timingSafeEqual(ab, bb);
+}
 
 // Start the Strava link. A browser link can't send headers, so the caller's key
 // rides in the query string: either the event's organiser key or the rider's own.
@@ -16,16 +30,30 @@ router.get("/auth/strava", asyncRoute(async (req, res) => {
   const allowed = key === ev.organiser_token || (r.rider_token && key === r.rider_token);
   if (!allowed) return res.status(403).send("That key doesn't grant access to this rider.");
   if (!process.env.STRAVA_CLIENT_ID || !process.env.STRAVA_CLIENT_SECRET) return res.status(500).send("Strava is not configured on this server.");
-  const state = signState({ code, rider: Number(rider), ts: Date.now() });
+  const nonce = crypto.randomBytes(16).toString("hex");
+  const state = signState({ code, rider: Number(rider), ts: Date.now(), nonce });
+  // secure must be conditional: Railway terminates TLS at a proxy, so req.secure reads false
+  // without `trust proxy` set. Unconditional `secure: true` would silently drop the cookie
+  // (and break the flow) under local HTTP dev.
+  res.cookie(NONCE_COOKIE, nonce, { httpOnly: true, sameSite: "lax", path: NONCE_COOKIE_PATH, maxAge: NONCE_MAX_AGE_MS, secure: baseUrl(req).startsWith("https:") });
   res.redirect(authUrl(state, `${baseUrl(req)}/auth/strava/callback`));
 }));
 
 router.get("/auth/strava/callback", asyncRoute(async (req, res) => {
+  const refuse = (signal) => { res.clearCookie(NONCE_COOKIE, { path: NONCE_COOKIE_PATH }); return res.redirect(`/?stravaerror=${signal}`); };
   try {
     const { code: authCode, state, error } = req.query;
     if (error) return res.redirect(`/?stravaerror=1`);
     const payload = verifyState(state);
     if (!payload) return res.redirect(`/?stravaerror=1`);
+    // Nonce check happens before exchange() so a refused flow never contacts Strava.
+    // The cookie-absent case gets its own signal (a rider with cookies blocked needs a
+    // message that names the cause); a genuine mismatch stays on the generic error so an
+    // attacker can't use the response to tell which check failed.
+    const cookieNonce = readCookie(req.headers.cookie, NONCE_COOKIE);
+    if (!cookieNonce) return refuse("nocookie");
+    if (!payload.nonce || !safeEqual(cookieNonce, payload.nonce)) return refuse("1");
+    res.clearCookie(NONCE_COOKIE, { path: NONCE_COOKIE_PATH });
     const { code, rider } = payload;
     const tok = await exchange(authCode);
     const athleteId = tok.athlete?.id || null;

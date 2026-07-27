@@ -108,8 +108,10 @@ auth checks have integration tests** against a real Postgres
 (`embedded-postgres`, no Docker — `npm run test:integration`): event
 create/fetch/patch (incl. the duplicate-code 409 case), rider CRUD under
 organiser-or-self auth, group suggest/save, and the `/auth/strava` key
-checks (missing/empty/wrong/cross-rider/cross-event key, plus a signed-state
-round-trip). One case from the original plan isn't tested —
+checks (missing/empty/wrong/cross-rider/cross-event key, a signed-state
+round-trip, and the nonce-cookie binding: no cookie, wrong cookie, and an
+old-format state with no nonce, all refused before the token exchange runs).
+One case from the original plan isn't tested —
 `POST /api/events/:code/suggest` "requires a course first" — because every
 event gets a default course on creation, so that guard is currently
 unreachable via the public API; see the comment in
@@ -118,20 +120,21 @@ live Strava round-trip itself — OAuth against a real account and reading
 power off real activities — so verify that by hand with `STRAVA_CLIENT_ID`,
 `STRAVA_CLIENT_SECRET` and `BASE_URL` set.
 
-**Known open issue: Strava linking can be redirected to the wrong rider.**
-Signing the OAuth `state` (see `docs/adr/0003-rider-self-service-via-rider-key.md`)
-ties a consent flow to a
-specific rider, but not to the browser that started it. Someone can sign up
-their own rider on an event they created, generate a valid Strava consent
-link for that rider, and hand it to someone else — if that person approves
-it under their own Strava account, the tokens (and so the ride history) land
-on the sender's rider row, not the approver's. The 15-minute expiry on
-`state` doesn't help, since a fresh one can be minted per target. Closing
-this properly means binding `state` to the browser that started the flow,
-which needs a cookie, and
-`docs/adr/0003-rider-self-service-via-rider-key.md` deliberately says not to
-add cookies without revisiting that decision. So this is left as an open
-decision for the repo owner, not an oversight.
+**Strava linking is bound to the browser that started it.** Signing the
+OAuth `state` proves the server issued it, but not that the party finishing
+the flow is the party who started it — see the amendment at the bottom of
+`docs/adr/0003-rider-self-service-via-rider-key.md` for the attack this
+closes (sign up your own rider, harvest a valid consent link, hand it to a
+victim; without browser binding their tokens land on your rider row).
+`GET /auth/strava` now mints a random nonce, folds it into the signed
+`state`, and sets it as a short-lived, path-scoped, `HttpOnly`,
+`SameSite=Lax` cookie (`Secure` only when the deployment is HTTPS — Railway
+terminates TLS at a proxy, so this is derived from `baseUrl(req)`, not
+`req.secure`). The callback compares the cookie against the state's nonce
+with a timing-safe check *before* calling Strava's token exchange, so a
+refused flow never contacts Strava, then clears the cookie either way. A
+rider whose browser blocks cookies gets a distinct `stravaerror=nocookie`
+banner naming the cause rather than the generic failure message.
 
 The organiser UI now matches the standalone app: tap a rider then another to
 swap, "+ here" to move between groups, lock/break groups, an unassigned bench,

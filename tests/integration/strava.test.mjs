@@ -173,6 +173,80 @@ describe("strava routes", () => {
     assert.equal(check.riders[0].strava, false);
   });
 
+  test("GET /auth/strava sets the nonce cookie with HttpOnly, SameSite=Lax and the expected path", async () => {
+    process.env.STRAVA_CLIENT_ID = "test-client-id";
+    process.env.STRAVA_CLIENT_SECRET = "test-client-secret";
+    try {
+      const { rider } = await seed(ctx.baseUrl, "sv-cookie");
+      const res = await fetch(`${ctx.baseUrl}/auth/strava?code=sv-cookie&rider=${rider.id}&key=${rider.riderKey}`, { redirect: "manual" });
+      assert.equal(res.status, 302);
+      const setCookie = res.headers.get("set-cookie");
+      assert.ok(setCookie, "Expected a Set-Cookie header");
+      assert.match(setCookie, /pursuit_oauth_nonce=/);
+      assert.match(setCookie, /HttpOnly/i);
+      assert.match(setCookie, /SameSite=Lax/i);
+      assert.match(setCookie, /Path=\/auth\/strava/i);
+    } finally {
+      restoreStrava();
+    }
+  });
+
+  test("callback with a valid signed state but no cookie is refused, signals the no-cookie case, and writes no token", async () => {
+    process.env.STRAVA_CLIENT_ID = "test-client-id";
+    process.env.STRAVA_CLIENT_SECRET = "test-client-secret";
+    try {
+      const { rider } = await seed(ctx.baseUrl, "sv-nononce");
+      const state = signState({ code: "sv-nononce", rider: Number(rider.id), ts: Date.now(), nonce: "somenonce123" });
+      // No Cookie header at all — simulates a browser that never received (or blocked) it.
+      const res = await fetch(`${ctx.baseUrl}/auth/strava/callback?code=fakeauthcode&state=${encodeURIComponent(state)}`, { redirect: "manual" });
+      assert.equal(res.status, 302);
+      assert.match(res.headers.get("location"), /stravaerror=nocookie/);
+      const after = await fetch(`${ctx.baseUrl}/api/events/sv-nononce`).then((r) => r.json());
+      assert.equal(after.riders.find((r) => r.id === rider.id).strava, false);
+      const check = await q("SELECT strava_access_token FROM riders WHERE id=$1", [rider.id]);
+      assert.equal(check.rows[0].strava_access_token, null);
+    } finally {
+      restoreStrava();
+    }
+  });
+
+  test("callback with a valid signed state and a wrong cookie value is refused with the generic error and writes no token", async () => {
+    process.env.STRAVA_CLIENT_ID = "test-client-id";
+    process.env.STRAVA_CLIENT_SECRET = "test-client-secret";
+    try {
+      const { rider } = await seed(ctx.baseUrl, "sv-wrongnonce");
+      const state = signState({ code: "sv-wrongnonce", rider: Number(rider.id), ts: Date.now(), nonce: "correctnonce" });
+      const res = await fetch(`${ctx.baseUrl}/auth/strava/callback?code=fakeauthcode&state=${encodeURIComponent(state)}`, {
+        redirect: "manual", headers: { Cookie: "pursuit_oauth_nonce=wrongnonce" },
+      });
+      assert.equal(res.status, 302);
+      assert.match(res.headers.get("location"), /stravaerror=1/);
+      assert.doesNotMatch(res.headers.get("location"), /nocookie/);
+      const check = await q("SELECT strava_access_token FROM riders WHERE id=$1", [rider.id]);
+      assert.equal(check.rows[0].strava_access_token, null);
+    } finally {
+      restoreStrava();
+    }
+  });
+
+  test("callback with an old-format state carrying no nonce at all is refused, even with a cookie present", async () => {
+    process.env.STRAVA_CLIENT_ID = "test-client-id";
+    process.env.STRAVA_CLIENT_SECRET = "test-client-secret";
+    try {
+      const { rider } = await seed(ctx.baseUrl, "sv-legacystate");
+      const state = signState({ code: "sv-legacystate", rider: Number(rider.id), ts: Date.now() }); // no nonce field
+      const res = await fetch(`${ctx.baseUrl}/auth/strava/callback?code=fakeauthcode&state=${encodeURIComponent(state)}`, {
+        redirect: "manual", headers: { Cookie: "pursuit_oauth_nonce=anything" },
+      });
+      assert.equal(res.status, 302);
+      assert.match(res.headers.get("location"), /stravaerror/);
+      const check = await q("SELECT strava_access_token FROM riders WHERE id=$1", [rider.id]);
+      assert.equal(check.rows[0].strava_access_token, null);
+    } finally {
+      restoreStrava();
+    }
+  });
+
   test("callback refuses a Strava athlete already linked to a different rider in the same event", async () => {
     process.env.STRAVA_CLIENT_ID = "test-client-id";
     process.env.STRAVA_CLIENT_SECRET = "test-client-secret";
@@ -194,8 +268,12 @@ describe("strava routes", () => {
         return originalFetch(url, opts);
       };
 
-      const state = signState({ code: "sv-dupe", rider: Number(claimant.id), ts: Date.now() });
-      const res = await fetch(`${ctx.baseUrl}/auth/strava/callback?code=fakeauthcode&state=${encodeURIComponent(state)}`, { redirect: "manual" });
+      // Must carry a matching nonce/cookie pair — the nonce check runs before exchange()
+      // and would otherwise refuse this before ever reaching the dupe-detection logic.
+      const state = signState({ code: "sv-dupe", rider: Number(claimant.id), ts: Date.now(), nonce: "matching-nonce" });
+      const res = await fetch(`${ctx.baseUrl}/auth/strava/callback?code=fakeauthcode&state=${encodeURIComponent(state)}`, {
+        redirect: "manual", headers: { Cookie: "pursuit_oauth_nonce=matching-nonce" },
+      });
       assert.equal(res.status, 302);
       assert.match(res.headers.get("location"), /stravaerror=1/);
 

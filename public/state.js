@@ -39,7 +39,9 @@ export const state = {
   mode: riderId !== null && riderKey ? "rider" : (startCode ? "app" : "landing"),
   justCreated: null,
   justSignedUp: null,
-  banner: params.get("stravalinked") ? "Strava linked — you can refine your FTP now." : params.get("stravaerror") ? "Strava linking failed." : "",
+  banner: params.get("stravalinked") ? "Strava linked — you can refine your FTP now."
+    : params.get("stravaerror") === "nocookie" ? "Strava linking needs cookies enabled in your browser — turn them on and try again."
+    : params.get("stravaerror") ? "Strava linking failed." : "",
 };
 if (state.code) state.token = LS.getItem("pursuit:token:" + state.code) || "";
 
