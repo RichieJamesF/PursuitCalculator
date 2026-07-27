@@ -1,7 +1,7 @@
 import express from "express";
 import { q } from "../db.js";
 import { eventForRider, getRider, requireRiderOrOrg, baseUrl, asyncRoute } from "./helpers.js";
-import { authUrl, exchange, refresh, recentActivities, activity } from "../lib/strava.mjs";
+import { authUrl, exchange, refresh, recentActivities, activity, signState, verifyState } from "../lib/strava.mjs";
 
 const router = express.Router();
 
@@ -16,7 +16,7 @@ router.get("/auth/strava", asyncRoute(async (req, res) => {
   const allowed = key === ev.organiser_token || (r.rider_token && key === r.rider_token);
   if (!allowed) return res.status(403).send("That key doesn't grant access to this rider.");
   if (!process.env.STRAVA_CLIENT_ID) return res.status(500).send("Strava is not configured on this server.");
-  const state = Buffer.from(JSON.stringify({ code, rider })).toString("base64url");
+  const state = signState({ code, rider: Number(rider), ts: Date.now() });
   res.redirect(authUrl(state, `${baseUrl(req)}/auth/strava/callback`));
 }));
 
@@ -24,7 +24,9 @@ router.get("/auth/strava/callback", asyncRoute(async (req, res) => {
   try {
     const { code: authCode, state, error } = req.query;
     if (error) return res.redirect(`/?stravaerror=1`);
-    const { code, rider } = JSON.parse(Buffer.from(String(state), "base64url").toString());
+    const payload = verifyState(state);
+    if (!payload) return res.redirect(`/?stravaerror=1`);
+    const { code, rider } = payload;
     const tok = await exchange(authCode);
     await q(
       "UPDATE riders SET strava_athlete_id=$1, strava_access_token=$2, strava_refresh_token=$3, strava_expires_at=$4 WHERE id=$5",
