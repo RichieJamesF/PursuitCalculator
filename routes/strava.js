@@ -1,14 +1,20 @@
 import express from "express";
 import { q } from "../db.js";
-import { eventForRider, requireOrg, baseUrl, asyncRoute } from "./helpers.js";
+import { eventForRider, getRider, requireRiderOrOrg, baseUrl, asyncRoute } from "./helpers.js";
 import { authUrl, exchange, refresh, recentActivities, activity } from "../lib/strava.mjs";
 
 const router = express.Router();
 
-// organiser (or rider) starts the link: /auth/strava?code=EVENT&rider=ID
+// Start the Strava link. A browser link can't send headers, so the caller's key
+// rides in the query string: either the event's organiser key or the rider's own.
 router.get("/auth/strava", asyncRoute(async (req, res) => {
-  const { code, rider } = req.query;
-  if (!code || !rider) return res.status(400).send("Missing event code or rider id.");
+  const { code, rider, key } = req.query;
+  if (!code || !rider || !key) return res.status(400).send("Missing event code, rider or key.");
+  const ev = await eventForRider(rider);
+  const r = await getRider(rider);
+  if (!ev || !r || ev.code !== String(code)) return res.status(404).send("No such rider in that event.");
+  const allowed = key === ev.organiser_token || (r.rider_token && key === r.rider_token);
+  if (!allowed) return res.status(403).send("That key doesn't grant access to this rider.");
   if (!process.env.STRAVA_CLIENT_ID) return res.status(500).send("Strava is not configured on this server.");
   const state = Buffer.from(JSON.stringify({ code, rider })).toString("base64url");
   res.redirect(authUrl(state, `${baseUrl(req)}/auth/strava/callback`));
@@ -85,10 +91,9 @@ export function sortRides(rides) {
 // list a rider's recent rides, hardest usable effort first
 router.get("/api/riders/:id/rides", asyncRoute(async (req, res) => {
   const ev = await eventForRider(req.params.id);
-  if (!requireOrg(ev, req, res)) return;
-  const { rows } = await q("SELECT * FROM riders WHERE id=$1", [req.params.id]);
-  const r = rows[0];
-  if (!r?.strava_access_token) return res.status(400).json({ error: "This rider hasn't linked Strava yet." });
+  const r = await getRider(req.params.id);
+  if (!requireRiderOrOrg(ev, r, req, res)) return;
+  if (!r.strava_access_token) return res.status(400).json({ error: "This rider hasn't linked Strava yet." });
   try {
     const access = await freshAccess(r);
     const acts = await recentActivities(access, 50);
@@ -105,10 +110,9 @@ router.get("/api/riders/:id/rides", asyncRoute(async (req, res) => {
 // use the suggested ride (the hardest recent qualifying effort).
 router.post("/api/riders/:id/refine", asyncRoute(async (req, res) => {
   const ev = await eventForRider(req.params.id);
-  if (!requireOrg(ev, req, res)) return;
-  const { rows } = await q("SELECT * FROM riders WHERE id=$1", [req.params.id]);
-  const r = rows[0];
-  if (!r?.strava_access_token) return res.status(400).json({ error: "This rider hasn't linked Strava yet." });
+  const r = await getRider(req.params.id);
+  if (!requireRiderOrOrg(ev, r, req, res)) return;
+  if (!r.strava_access_token) return res.status(400).json({ error: "This rider hasn't linked Strava yet." });
   try {
     const access = await freshAccess(r);
     let act;
