@@ -111,4 +111,62 @@ describe("riders routes", () => {
     const a = await add("Ann"), b = await add("Bea");
     assert.notEqual(a.riderKey, b.riderKey);
   });
+
+  test("a rider can PATCH their own row with their rider key", async () => {
+    await createEvent(ctx.baseUrl, "riders-self");
+    const me = await fetch(`${ctx.baseUrl}/api/events/riders-self/riders`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "Sam", ftp: 240 }),
+    }).then((r) => r.json());
+
+    const res = await fetch(`${ctx.baseUrl}/api/riders/${me.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", "x-rider-token": me.riderKey },
+      body: JSON.stringify({ ftp: 265, w: 72 }),
+    });
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.equal(body.ftp, 265);
+    assert.equal(body.w, 72);
+    assert.equal(body.name, "Sam");
+  });
+
+  test("a rider key cannot edit a different rider", async () => {
+    await createEvent(ctx.baseUrl, "riders-cross");
+    const add = (name) => fetch(`${ctx.baseUrl}/api/events/riders-cross/riders`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name }),
+    }).then((r) => r.json());
+    const a = await add("Ann"), b = await add("Bea");
+
+    const res = await fetch(`${ctx.baseUrl}/api/riders/${b.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", "x-rider-token": a.riderKey },
+      body: JSON.stringify({ name: "Hacked" }),
+    });
+    assert.equal(res.status, 403);
+  });
+
+  test("a rider can remove themselves with their rider key", async () => {
+    await createEvent(ctx.baseUrl, "riders-selfdel");
+    const me = await fetch(`${ctx.baseUrl}/api/events/riders-selfdel/riders`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "Gone" }),
+    }).then((r) => r.json());
+
+    const res = await fetch(`${ctx.baseUrl}/api/riders/${me.id}`, {
+      method: "DELETE", headers: { "x-rider-token": me.riderKey },
+    });
+    assert.equal(res.status, 200);
+    const check = await fetch(`${ctx.baseUrl}/api/events/riders-selfdel`).then((r) => r.json());
+    assert.equal(check.riders.length, 0);
+  });
+
+  test("PATCH /api/riders/:id with a non-numeric id 404s instead of erroring", async () => {
+    const res = await fetch(`${ctx.baseUrl}/api/riders/not-an-id`, {
+      method: "PATCH", headers: { "Content-Type": "application/json", "x-rider-token": "whatever" },
+      body: JSON.stringify({ name: "x" }),
+    });
+    assert.equal(res.status, 404);
+  });
 });

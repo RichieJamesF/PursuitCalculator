@@ -1,6 +1,6 @@
 import express from "express";
 import { q } from "../db.js";
-import { getEvent, eventForRider, requireOrg, publicRider, truncate, token, asyncRoute } from "./helpers.js";
+import { getEvent, eventForRider, getRider, requireRiderOrOrg, publicRider, truncate, token, asyncRoute } from "./helpers.js";
 
 const router = express.Router();
 
@@ -20,11 +20,9 @@ router.post("/api/events/:code/riders", asyncRoute(async (req, res) => {
 
 router.patch("/api/riders/:id", asyncRoute(async (req, res) => {
   const ev = await eventForRider(req.params.id);
-  if (!requireOrg(ev, req, res)) return;
+  const r = await getRider(req.params.id);
+  if (!requireRiderOrOrg(ev, r, req, res)) return;
   const b = req.body || {};
-  const { rows: cur } = await q("SELECT * FROM riders WHERE id=$1", [req.params.id]);
-  if (!cur[0]) return res.status(404).json({ error: "No such rider." });
-  const r = cur[0];
   const { rows } = await q(
     "UPDATE riders SET name=$1,weight=$2,ftp=$3,pos=$4,build=$5 WHERE id=$6 RETURNING *",
     [truncate(b.name, 60, r.name), b.w != null ? Number(b.w) : r.weight,
@@ -35,10 +33,11 @@ router.patch("/api/riders/:id", asyncRoute(async (req, res) => {
 
 router.delete("/api/riders/:id", asyncRoute(async (req, res) => {
   const ev = await eventForRider(req.params.id);
-  if (!requireOrg(ev, req, res)) return;
-  await q("DELETE FROM riders WHERE id=$1", [req.params.id]);
+  const r = await getRider(req.params.id);
+  if (!requireRiderOrOrg(ev, r, req, res)) return;
+  await q("DELETE FROM riders WHERE id=$1", [r.id]);
   // drop the rider from any stored groups
-  const groups = (ev.groups_json || []).map((g) => ({ ...g, members: g.members.filter((m) => String(m) !== String(req.params.id)) })).filter((g) => g.members.length || g.locked);
+  const groups = (ev.groups_json || []).map((g) => ({ ...g, members: g.members.filter((m) => String(m) !== String(r.id)) })).filter((g) => g.members.length || g.locked);
   await q("UPDATE events SET groups_json=$1 WHERE id=$2", [JSON.stringify(groups), ev.id]);
   res.json({ ok: true });
 }));
