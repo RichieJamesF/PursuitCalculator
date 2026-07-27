@@ -29,6 +29,10 @@ CREATE TABLE IF NOT EXISTS riders (
   created_at            TIMESTAMPTZ DEFAULT now()
 );
 
+-- Rider key: lets a rider edit their own row and run their own Strava refinement
+-- without the organiser (ADR-0003). Null for rows created before that shipped.
+ALTER TABLE riders ADD COLUMN IF NOT EXISTS rider_token TEXT;
+
 CREATE INDEX IF NOT EXISTS idx_riders_event ON riders(event_id);
 
 -- Calibration is retired (ADR-0001): FTP alone drives the model. Nothing writes a

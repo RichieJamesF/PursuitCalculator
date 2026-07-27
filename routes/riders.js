@@ -1,20 +1,21 @@
 import express from "express";
 import { q } from "../db.js";
-import { getEvent, eventForRider, requireOrg, publicRider, truncate, asyncRoute } from "./helpers.js";
+import { getEvent, eventForRider, requireOrg, publicRider, truncate, token, asyncRoute } from "./helpers.js";
 
 const router = express.Router();
 
-// public self sign-up
+// public self sign-up — mints the rider's own key, returned exactly once
 router.post("/api/events/:code/riders", asyncRoute(async (req, res) => {
   const ev = await getEvent(req.params.code);
   if (!ev) return res.status(404).json({ error: "No event with that code." });
   const b = req.body || {};
   if (!b.name?.trim()) return res.status(400).json({ error: "Name is required." });
+  const riderKey = token();
   const { rows } = await q(
-    "INSERT INTO riders(event_id,name,weight,ftp,pos,build) VALUES($1,$2,$3,$4,$5,$6) RETURNING *",
-    [ev.id, truncate(b.name.trim(), 60, ""), Number(b.w) || 75, Number(b.ftp) || 240, b.pos || "road_drops", b.build || "medium"]
+    "INSERT INTO riders(event_id,name,weight,ftp,pos,build,rider_token) VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING *",
+    [ev.id, truncate(b.name.trim(), 60, ""), Number(b.w) || 75, Number(b.ftp) || 240, b.pos || "road_drops", b.build || "medium", riderKey]
   );
-  res.json(publicRider(rows[0]));
+  res.json({ ...publicRider(rows[0]), riderKey });
 }));
 
 router.patch("/api/riders/:id", asyncRoute(async (req, res) => {

@@ -86,4 +86,29 @@ describe("riders routes", () => {
     const checkBody = await check.json();
     assert.equal(checkBody.riders.length, 0);
   });
+
+  test("POST /api/events/:code/riders returns a rider key once, and never leaks it again", async () => {
+    await createEvent(ctx.baseUrl, "riders-key");
+    const signup = await fetch(`${ctx.baseUrl}/api/events/riders-key/riders`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "Kit" }),
+    }).then((r) => r.json());
+
+    assert.match(signup.riderKey, /^[a-f0-9]{32}$/);
+
+    const listed = await fetch(`${ctx.baseUrl}/api/events/riders-key`).then((r) => r.json());
+    assert.equal(listed.riders.length, 1);
+    assert.equal(listed.riders[0].riderKey, undefined);
+    assert.equal(listed.riders[0].rider_token, undefined);
+  });
+
+  test("two riders in the same event get different rider keys", async () => {
+    await createEvent(ctx.baseUrl, "riders-key2");
+    const add = (name) => fetch(`${ctx.baseUrl}/api/events/riders-key2/riders`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name }),
+    }).then((r) => r.json());
+    const a = await add("Ann"), b = await add("Bea");
+    assert.notEqual(a.riderKey, b.riderKey);
+  });
 });
