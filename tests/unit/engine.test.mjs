@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   DEFAULT_PARAMS, buildManualCourse, suggestGroups, computeSheet,
-  calibrationFactor, soloDuration, evenness, cdaOf,
+  soloDuration, evenness, cdaOf,
 } from "../../lib/engine.mjs";
 
 const p = DEFAULT_PARAMS;
@@ -81,14 +81,3 @@ test("computeSheet seeds the slower group first (offset 0) and orders by offset"
   assert.ok(Math.abs(sheet.tMin - sheet.rows[1].dur) < 1e-6);
 });
 
-test("calibrationFactor raises k when the rider rode faster than predicted, ~1 for an exact match", () => {
-  const course = buildManualCourse(20, 200);
-  const rider = { id: "x", name: "X", w: 70, ftp: 240, pos: "road_drops", build: "medium" };
-  const baseline = soloDuration({ ...rider, calib: 1 }, course.segments, p);
-
-  const kFaster = calibrationFactor(rider, course.segments, baseline * 0.9, p, 1);
-  assert.ok(kFaster > 1.1 && kFaster < 1.2, `expected ~1.14, got ${kFaster}`);
-
-  const kMatch = calibrationFactor(rider, course.segments, baseline, p, 1);
-  assert.ok(Math.abs(kMatch - 1) < 1e-6, `expected ~1, got ${kMatch}`);
-});

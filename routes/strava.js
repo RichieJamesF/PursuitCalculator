@@ -2,7 +2,6 @@ import express from "express";
 import { q } from "../db.js";
 import { eventForRider, requireOrg, paramsOf, baseUrl, engineRider, asyncRoute } from "./helpers.js";
 import { authUrl, exchange, refresh, recentActivities, activity } from "../lib/strava.mjs";
-import { calibrationFactor } from "../lib/engine.mjs";
 
 const router = express.Router();
 
@@ -47,13 +46,12 @@ const isRide = (a) => RIDE_TYPES.has(a.sport_type) || a.type === "Ride";
 function normalizeRide(a, courseM, rider, segments, params) {
   const matches = courseM ? Math.abs(a.distance - courseM) / courseM <= 0.08 : false;
   const weighted = a.device_watts ? a.weighted_average_watts : null;
-  const impliedCalib = matches && segments ? Number(calibrationFactor(rider, segments, a.moving_time, params, rider.calib).toFixed(3)) : null;
   return {
     id: a.id, name: a.name, date: a.start_date, distanceKm: +(a.distance / 1000).toFixed(1),
     movingTime: a.moving_time, avgSpeedKmh: +((a.average_speed || 0) * 3.6).toFixed(1),
     avgWatts: a.average_watts != null ? Math.round(a.average_watts) : null,
     weightedWatts: weighted != null ? Math.round(weighted) : null,
-    hasPower: !!a.device_watts, commute: !!a.commute, matches, impliedCalib,
+    hasPower: !!a.device_watts, commute: !!a.commute, matches,
   };
 }
 
@@ -109,10 +107,8 @@ router.post("/api/riders/:id/refine", asyncRoute(async (req, res) => {
       await q("UPDATE riders SET ftp=$1, calib=1, last_refined_at=now() WHERE id=$2", [ftp, r.id]);
       return res.json({ matched: true, mode: "power", activity: act.name, ftp, hadPower: !!act.device_watts });
     }
-    const rider = engineRider(r);
-    const k = calibrationFactor(rider, ev.course_json.segments, act.moving_time, paramsOf(ev), r.calib);
-    await q("UPDATE riders SET calib=$1, last_refined_at=now() WHERE id=$2", [k, r.id]);
-    res.json({ matched: true, mode: "course", activity: act.name, distanceKm: (act.distance / 1000).toFixed(1), movingTime: act.moving_time, calib: Number(k.toFixed(3)), effectiveFtp: Math.round(r.ftp * k) });
+    await q("UPDATE riders SET calib=1, last_refined_at=now() WHERE id=$1", [r.id]);
+    res.json({ matched: true, mode: "course", activity: act.name, distanceKm: (act.distance / 1000).toFixed(1), movingTime: act.moving_time, calib: 1, effectiveFtp: Math.round(r.ftp) });
   } catch (e) {
     console.error(e); res.status(502).json({ error: "Strava request failed — try again." });
   }

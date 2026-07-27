@@ -30,3 +30,8 @@ CREATE TABLE IF NOT EXISTS riders (
 );
 
 CREATE INDEX IF NOT EXISTS idx_riders_event ON riders(event_id);
+
+-- Calibration is retired (ADR-0001): FTP alone drives the model. Nothing writes a
+-- non-1 value any more, so this idempotently clears multipliers left by the old
+-- time-based "Use time" refinement.
+UPDATE riders SET calib = 1 WHERE calib <> 1;
