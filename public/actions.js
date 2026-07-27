@@ -1,4 +1,4 @@
-import { state, LS, riderKeyLS } from "./state.js";
+import { state, LS, riderKeyLS, riderIdLS } from "./state.js";
 import { api, loadEvent, syncWork } from "./api.js";
 import { render } from "./views.js";
 
@@ -95,6 +95,7 @@ export async function signUp(code, body) {
   state.riderId = r.id;
   state.riderKey = r.riderKey;
   LS.setItem(riderKeyLS(code, r.id), r.riderKey);
+  LS.setItem(riderIdLS(code), String(r.id));
   LS.setItem("pursuit:lastCode", code);
   state.justSignedUp = { name: r.name, id: r.id, code, key: r.riderKey };
   render();
@@ -110,3 +111,6 @@ export function openRiderPage() {
 
 export const updRiderSelf = (id, body) =>
   api("/riders/" + id, "PATCH", body, "rider").then(loadEvent).catch((e) => alert(e.message));
+
+export const unlinkStrava = (id, auth) =>
+  api("/riders/" + id + "/strava", "DELETE", null, auth).then(loadEvent).catch((e) => alert(e.message));

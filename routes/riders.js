@@ -23,10 +23,17 @@ router.patch("/api/riders/:id", asyncRoute(async (req, res) => {
   const r = await getRider(req.params.id);
   if (!requireRiderOrOrg(ev, r, req, res)) return;
   const b = req.body || {};
+  // Every rider can reach this now (ADR-0003), not just the organiser, so the same floors
+  // the client enforces have to hold server-side too — a devtools console bypasses the client.
+  const name = b.name != null ? String(b.name).trim() : null;
+  if (b.name != null && !name) return res.status(400).json({ error: "Name can't be blank." });
+  let w = r.weight;
+  if (b.w != null) { w = Number(b.w); if (!Number.isFinite(w) || w <= 30) return res.status(400).json({ error: "Weight must be a number above 30 kg." }); }
+  let ftp = r.ftp;
+  if (b.ftp != null) { ftp = Number(b.ftp); if (!Number.isFinite(ftp) || ftp <= 50) return res.status(400).json({ error: "FTP must be a number above 50 W." }); }
   const { rows } = await q(
     "UPDATE riders SET name=$1,weight=$2,ftp=$3,pos=$4,build=$5 WHERE id=$6 RETURNING *",
-    [truncate(b.name, 60, r.name), b.w != null ? Number(b.w) : r.weight,
-     b.ftp != null ? Number(b.ftp) : r.ftp, b.pos || r.pos, b.build || r.build, r.id]
+    [truncate(name, 60, r.name), w, ftp, b.pos || r.pos, b.build || r.build, r.id]
   );
   res.json(publicRider(rows[0]));
 }));

@@ -28,11 +28,23 @@ router.get("/auth/strava/callback", asyncRoute(async (req, res) => {
     if (!payload) return res.redirect(`/?stravaerror=1`);
     const { code, rider } = payload;
     const tok = await exchange(authCode);
+    const athleteId = tok.athlete?.id || null;
+    if (athleteId) {
+      // Refuse a Strava athlete already attached to a different rider in this event —
+      // silently overwriting would make repeated harvesting against one event invisible.
+      const { rows: dupe } = await q(
+        "SELECT r.id FROM riders r JOIN events e ON e.id=r.event_id WHERE e.code=$1 AND r.strava_athlete_id=$2 AND r.id<>$3",
+        [code, athleteId, rider]
+      );
+      if (dupe.length) return res.redirect(`/?code=${encodeURIComponent(code)}&stravaerror=1`);
+    }
     await q(
       "UPDATE riders SET strava_athlete_id=$1, strava_access_token=$2, strava_refresh_token=$3, strava_expires_at=$4 WHERE id=$5",
-      [tok.athlete?.id || null, tok.access_token, tok.refresh_token, tok.expires_at, rider]
+      [athleteId, tok.access_token, tok.refresh_token, tok.expires_at, rider]
     );
-    res.redirect(`/?code=${encodeURIComponent(code)}&stravalinked=1`);
+    // Carry the rider id (never the key) back so the localStorage fallback in state.js can
+    // resolve rider mode again — this redirect has no browser-supplied key to pass through.
+    res.redirect(`/?code=${encodeURIComponent(code)}&rider=${rider}&stravalinked=1`);
   } catch (e) {
     console.error(e); res.redirect(`/?stravaerror=1`);
   }

@@ -162,6 +162,78 @@ describe("riders routes", () => {
     assert.equal(check.riders.length, 0);
   });
 
+  test("PATCH /api/riders/:id rejects a non-numeric weight instead of persisting NaN", async () => {
+    const ev = await createEvent(ctx.baseUrl, "riders-nan-w");
+    const addRes = await fetch(`${ctx.baseUrl}/api/events/riders-nan-w/riders`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "Nan" }),
+    });
+    const rider = await addRes.json();
+    const res = await fetch(`${ctx.baseUrl}/api/riders/${rider.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", "x-organiser-token": ev.organiserToken },
+      body: JSON.stringify({ w: "abc" }),
+    });
+    assert.equal(res.status, 400);
+    const body = await res.json();
+    assert.match(body.error, /weight/i);
+    const check = await fetch(`${ctx.baseUrl}/api/events/riders-nan-w`).then((r) => r.json());
+    assert.equal(check.riders[0].w, 75); // unchanged, not NaN
+  });
+
+  test("PATCH /api/riders/:id rejects a blank name", async () => {
+    const ev = await createEvent(ctx.baseUrl, "riders-blank-name");
+    const addRes = await fetch(`${ctx.baseUrl}/api/events/riders-blank-name/riders`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "Original" }),
+    });
+    const rider = await addRes.json();
+    const res = await fetch(`${ctx.baseUrl}/api/riders/${rider.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", "x-organiser-token": ev.organiserToken },
+      body: JSON.stringify({ name: "   " }),
+    });
+    assert.equal(res.status, 400);
+    const check = await fetch(`${ctx.baseUrl}/api/events/riders-blank-name`).then((r) => r.json());
+    assert.equal(check.riders[0].name, "Original"); // unchanged, not blanked
+  });
+
+  test("PATCH /api/riders/:id rejects an out-of-range FTP", async () => {
+    const ev = await createEvent(ctx.baseUrl, "riders-bad-ftp");
+    const addRes = await fetch(`${ctx.baseUrl}/api/events/riders-bad-ftp/riders`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "Lo" }),
+    });
+    const rider = await addRes.json();
+    const res = await fetch(`${ctx.baseUrl}/api/riders/${rider.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", "x-organiser-token": ev.organiserToken },
+      body: JSON.stringify({ ftp: 10 }),
+    });
+    assert.equal(res.status, 400);
+    const body = await res.json();
+    assert.match(body.error, /FTP/);
+  });
+
+  test("PATCH /api/riders/:id still succeeds with a valid edit alongside the new validation", async () => {
+    const ev = await createEvent(ctx.baseUrl, "riders-still-valid");
+    const addRes = await fetch(`${ctx.baseUrl}/api/events/riders-still-valid/riders`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "Val" }),
+    });
+    const rider = await addRes.json();
+    const res = await fetch(`${ctx.baseUrl}/api/riders/${rider.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", "x-organiser-token": ev.organiserToken },
+      body: JSON.stringify({ name: "Valerie", w: 68, ftp: 255 }),
+    });
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.equal(body.name, "Valerie");
+    assert.equal(body.w, 68);
+    assert.equal(body.ftp, 255);
+  });
+
   test("PATCH /api/riders/:id with a non-numeric id 404s with a sensible message", async () => {
     const res = await fetch(`${ctx.baseUrl}/api/riders/not-an-id`, {
       method: "PATCH", headers: { "Content-Type": "application/json", "x-rider-token": "whatever" },

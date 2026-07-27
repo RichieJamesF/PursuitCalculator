@@ -6,17 +6,23 @@ export const params = new URLSearchParams(location.search);
 export const LS = window.localStorage;
 
 export const riderKeyLS = (code, id) => `pursuit:riderkey:${code}:${id}`;
+export const riderIdLS = (code) => `pursuit:riderid:${code}`;
 
 const startCode = params.get("code") || LS.getItem("pursuit:lastCode") || "";
 const qRider = params.get("rider"), qKey = params.get("key");
-const riderId = qRider && /^\d+$/.test(qRider) ? Number(qRider) : null;
+const storedRider = startCode ? LS.getItem(riderIdLS(startCode)) : null;
+// The rider id can arrive in the URL (sign-up link, own rider link) or, absent that,
+// from what we remembered last time — the Strava OAuth callback redirect carries the
+// rider id but never the key, so without this fallback that return trip is unreadable.
+const riderId = qRider && /^\d+$/.test(qRider) ? Number(qRider)
+  : storedRider && /^\d+$/.test(storedRider) ? Number(storedRider) : null;
 
-// A rider arriving on their own link carries their key in the URL; remember it so
-// the same device recognises them next time without the link.
+// A rider arriving on their own link carries their key in the URL; remember both the
+// key and the id so the same device recognises them next time without either.
 let riderKey = "";
-if (startCode && riderId) {
+if (startCode && riderId !== null) {
   riderKey = qKey || LS.getItem(riderKeyLS(startCode, riderId)) || "";
-  if (qKey) LS.setItem(riderKeyLS(startCode, riderId), qKey);
+  if (qKey) { LS.setItem(riderKeyLS(startCode, riderId), qKey); LS.setItem(riderIdLS(startCode), String(riderId)); }
 }
 
 export const state = {
@@ -30,7 +36,7 @@ export const state = {
   sel: null,
   saveStatus: "",
   ridePicker: null,
-  mode: riderId && riderKey ? "rider" : (startCode ? "app" : "landing"),
+  mode: riderId !== null && riderKey ? "rider" : (startCode ? "app" : "landing"),
   justCreated: null,
   justSignedUp: null,
   banner: params.get("stravalinked") ? "Strava linked — you can refine your FTP now." : params.get("stravaerror") ? "Strava linking failed." : "",

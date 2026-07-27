@@ -23,7 +23,7 @@ export async function loadEvent() {
   if (saving) await new Promise((r) => { const t = setInterval(() => { if (!saving) { clearInterval(t); r(); } }, 20); });
   // A rider arriving on their own link is already in "rider" mode; don't demote them to the
   // organiser view just because the event loaded.
-  try { state.data = await api("/events/" + encodeURIComponent(state.code)); LS.setItem("pursuit:lastCode", state.code); syncWork(); state.mode = state.riderId && state.riderKey ? "rider" : "app"; }
+  try { state.data = await api("/events/" + encodeURIComponent(state.code)); LS.setItem("pursuit:lastCode", state.code); syncWork(); state.mode = state.riderId !== null && state.riderKey ? "rider" : "app"; }
   catch { state.data = null; state.mode = "landing"; state.banner = "Couldn't find event “" + state.code + "”. Check the code, or create a new event."; }
   render();
 }

@@ -1,7 +1,8 @@
 import { test, describe, beforeEach, afterEach, after } from "node:test";
 import assert from "node:assert/strict";
 import { startTestServer, stopTestServer, closePool } from "./helpers.mjs";
-import { verifyState } from "../../lib/strava.mjs";
+import { q } from "../../db.js";
+import { verifyState, signState } from "../../lib/strava.mjs";
 
 const ORIGINAL_CLIENT_ID = process.env.STRAVA_CLIENT_ID;
 const ORIGINAL_CLIENT_SECRET = process.env.STRAVA_CLIENT_SECRET;
@@ -150,5 +151,39 @@ describe("strava routes", () => {
     });
     assert.equal(res.status, 400);
     assert.match((await res.json()).error, /hasn't linked Strava/);
+  });
+
+  test("callback refuses a Strava athlete already linked to a different rider in the same event", async () => {
+    process.env.STRAVA_CLIENT_ID = "test-client-id";
+    process.env.STRAVA_CLIENT_SECRET = "test-client-secret";
+    const originalFetch = globalThis.fetch;
+    try {
+      const { rider: holder } = await seed(ctx.baseUrl, "sv-dupe");
+      const claimant = await fetch(`${ctx.baseUrl}/api/events/sv-dupe/riders`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: "Bex" }),
+      }).then((r) => r.json());
+      await q("UPDATE riders SET strava_athlete_id=$1 WHERE id=$2", [777, holder.id]);
+
+      // Stub only the Strava token exchange; everything else (including the local test
+      // server request below) goes through the real fetch.
+      globalThis.fetch = async (url, opts) => {
+        if (String(url).includes("/oauth/token")) {
+          return { ok: true, json: async () => ({ athlete: { id: 777 }, access_token: "tok", refresh_token: "reftok", expires_at: 9999999999 }) };
+        }
+        return originalFetch(url, opts);
+      };
+
+      const state = signState({ code: "sv-dupe", rider: Number(claimant.id), ts: Date.now() });
+      const res = await fetch(`${ctx.baseUrl}/auth/strava/callback?code=fakeauthcode&state=${encodeURIComponent(state)}`, { redirect: "manual" });
+      assert.equal(res.status, 302);
+      assert.match(res.headers.get("location"), /stravaerror=1/);
+
+      const after = await fetch(`${ctx.baseUrl}/api/events/sv-dupe`).then((r) => r.json());
+      assert.equal(after.riders.find((r) => r.id === claimant.id).strava, false);
+    } finally {
+      globalThis.fetch = originalFetch;
+      restoreStrava();
+    }
   });
 });
