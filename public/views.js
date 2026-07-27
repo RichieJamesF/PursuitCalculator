@@ -67,35 +67,50 @@ export function render() {
 }
 
 function ridePickerEl() {
-  const { riderId, rides, course, hideCommutes } = state.ridePicker;
+  const { riderId, rides, suggestedId, minMinutes, auth } = state.ridePicker;
   const rider = ridersById()[riderId];
-  const shown = rides.filter((r) => !(hideCommutes && r.commute));
+  const suggested = rides.find((r) => r.id === suggestedId) || null;
+  const others = rides.filter((r) => r.id !== suggestedId);
   const shortDate = (d) => new Date(d).toLocaleDateString(undefined, { day: "numeric", month: "short" });
+  const powerLabel = (rd) => rd.ftpEstimate == null ? "no power data"
+    : `${rd.ftpEstimate} W · ${rd.hasPower ? "power meter" : "Strava estimate"}`;
+  const why = (rd) => rd.eligible ? "" : rd.ftpEstimate == null ? "no power data"
+    : `under ${minMinutes} min`;
+
   const overlay = el(`<div class="modal-back"><div class="modal">
-    <div class="modal-hd"><div><span class="kicker">Refine from Strava</span><h2>${esc(rider?.name || "Rider")}'s recent rides</h2></div><button class="modal-x" id="close">×</button></div>
-    <p class="hint">Pick a real effort — not a commute. <b>Use time</b> calibrates from how fast this ride was over your course (${course.distanceKm ? course.distanceKm + " km" : "no course set"}). <b>FTP from power</b> reads the ride's power as an FTP estimate (best on a 30–60 min hard effort).</p>
-    <div class="modal-tools"><button class="btn" id="auto" ${course.distanceKm ? "" : "disabled"}>Auto · fastest effort on course</button>
-      <label class="chk"><input type="checkbox" id="hc" ${hideCommutes ? "checked" : ""}/> Hide commutes</label></div>
+    <div class="modal-hd"><div><span class="kicker">Set FTP from a ride</span><h2>${esc(rider?.name || "Rider")}</h2></div><button class="modal-x" id="close">×</button></div>
+    <div id="suggestion"></div>
+    <div class="modal-tools"><span class="hint">Or pick a different ride — it needs power data and at least ${minMinutes} minutes.</span></div>
     <div class="ridelist" id="ridelist"></div>
   </div></div>`);
   overlay.querySelector("#close").onclick = () => { state.ridePicker = null; render(); };
   overlay.onclick = (e) => { if (e.target === overlay) { state.ridePicker = null; render(); } };
-  overlay.querySelector("#auto").onclick = () => autoRefine(riderId);
-  overlay.querySelector("#hc").onchange = (e) => { state.ridePicker.hideCommutes = e.target.checked; render(); };
+
+  const sug = overlay.querySelector("#suggestion");
+  if (suggested) {
+    const box = el(`<div class="ridecard match">
+      <div class="ride-main"><span class="kicker">Your hardest recent effort</span>
+        <b>${esc(suggested.name)}</b>
+        <span class="ride-sub">${shortDate(suggested.date)} · ${suggested.distanceKm} km · ${fmtDur(suggested.movingTime)} · ${powerLabel(suggested)}</span></div>
+      <p class="hint">This sets your FTP to <b>${suggested.ftpEstimate} W</b>.</p>
+      <div class="ride-acts"><button class="btn" id="usesug">Use this ride</button></div></div>`);
+    box.querySelector("#usesug").onclick = () => autoRefine(riderId, auth);
+    sug.appendChild(box);
+  } else {
+    sug.appendChild(el(`<p class="empty">No ride in the last 6 weeks has power data and lasts ${minMinutes} minutes or more. Pick one below if you think it's a fair effort, or type your FTP in by hand instead.</p>`));
+  }
 
   const list = overlay.querySelector("#ridelist");
-  if (!shown.length) list.innerHTML = `<p class="empty">No rides in the last 6 weeks${hideCommutes ? " (commutes hidden)" : ""}.</p>`;
-  shown.forEach((rd) => {
-    const power = rd.weightedWatts != null ? `${rd.weightedWatts} W · meter` : rd.avgWatts != null ? `${rd.avgWatts} W · est` : "no power";
-    const card = el(`<div class="ridecard ${rd.matches ? "match" : ""}">
-      <div class="ride-main"><b>${esc(rd.name)}</b><span class="ride-sub">${shortDate(rd.date)} · ${rd.distanceKm} km · ${fmtDur(rd.movingTime)} · ${rd.avgSpeedKmh} km/h · ${power}</span></div>
-      <div class="ride-tags">${rd.matches ? `<span class="tg tg-match">matches course${rd.impliedCalib ? ` · ×${rd.impliedCalib}` : ""}</span>` : ""}${rd.commute ? `<span class="tg tg-com">commute</span>` : ""}${rd.hasPower ? `<span class="tg tg-pow">power meter</span>` : ""}</div>
-      <div class="ride-acts">
-        <button class="add usetime" ${rd.matches ? "" : "disabled"} title="${rd.matches ? "Calibrate from this ride's time on the course" : "Only for rides that match the course distance"}">Use time</button>
-        <button class="add usepow" ${rd.avgWatts != null || rd.weightedWatts != null ? "" : "disabled"} title="Set FTP from this ride's power">FTP from power</button>
-      </div></div>`);
-    card.querySelector(".usetime").onclick = () => applyRefine(riderId, rd.id, "course");
-    card.querySelector(".usepow").onclick = () => applyRefine(riderId, rd.id, "power");
+  if (!others.length) list.innerHTML = `<p class="empty">No other rides in the last 6 weeks.</p>`;
+  others.forEach((rd) => {
+    const reason = why(rd);
+    const card = el(`<div class="ridecard ${rd.eligible ? "" : "dim"}">
+      <div class="ride-main"><b>${esc(rd.name)}</b>
+        <span class="ride-sub">${shortDate(rd.date)} · ${rd.distanceKm} km · ${fmtDur(rd.movingTime)} · ${powerLabel(rd)}</span></div>
+      <div class="ride-tags">${rd.commute ? `<span class="tg tg-com">commute</span>` : ""}${rd.hasPower ? `<span class="tg tg-pow">power meter</span>` : ""}${reason ? `<span class="tg">${esc(reason)}</span>` : ""}</div>
+      <div class="ride-acts"><button class="add use" ${rd.eligible ? "" : "disabled"} title="${rd.eligible ? `Set FTP to ${rd.ftpEstimate} W` : `Can't use this ride — ${reason}`}">${rd.eligible ? `Use · ${rd.ftpEstimate} W` : "Can't use"}</button></div></div>`);
+    const btn = card.querySelector(".use");
+    if (rd.eligible) btn.onclick = () => applyRefine(riderId, rd.id, auth);
     list.appendChild(card);
   });
   return overlay;
@@ -203,9 +218,9 @@ function riderRow(r, canEdit) {
       <label class="rf"><span>Build</span><select class="build" ${canEdit ? "" : "disabled"}>${Object.entries(BUILDS).map(([k, v]) => `<option value="${k}" ${k === r.build ? "selected" : ""}>${v}</option>`).join("")}</select></label>
       ${canEdit ? `<button class="del" title="Remove">×</button>` : ""}</div>
     <div class="rr-tools"><span class="pill ${r.strava ? "on" : "off"}">${r.strava ? "Strava linked" : "No Strava"}</span>
-      <span class="micro">${wkg} W/kg${r.calib && r.calib !== 1 ? ` · cal ×${r.calib.toFixed(2)}` : ""}</span>
-      ${canEdit ? `<a class="ghost" href="/auth/strava?code=${encodeURIComponent(state.code)}&rider=${r.id}">${r.strava ? "Re-link" : "Link Strava"}</a>` : ""}
-      ${canEdit && r.strava ? `<button class="ghost refine">Refine</button>` : ""}</div></div>`);
+      <span class="micro">${wkg} W/kg${r.lastRefined ? ` · FTP from Strava ${esc(new Date(r.lastRefined).toLocaleDateString())}` : ""}</span>
+      ${canEdit ? `<a class="ghost" href="/auth/strava?code=${encodeURIComponent(state.code)}&rider=${r.id}&key=${encodeURIComponent(state.token)}">${r.strava ? "Re-link" : "Link Strava"}</a>` : ""}
+      ${canEdit && r.strava ? `<button class="ghost refine" title="Set this rider's FTP from one of their Strava rides">Set FTP from Strava</button>` : ""}</div></div>`);
   if (canEdit) {
     const save = () => updRider(r.id, { name: row.querySelector(".rr-name").value, w: +row.querySelector(".w").value, ftp: +row.querySelector(".ftp").value, pos: row.querySelector(".pos").value, build: row.querySelector(".build").value });
     row.querySelector(".rr-name").onblur = save;

@@ -132,6 +132,8 @@ td.grp b{display:block;color:#fff}td.gap{color:var(--pink)}
 .tg-match{background:#1f7a4d;color:#fff}.tg-com{background:#b9821a;color:#fff}.tg-pow{background:#2a2a2a;color:#fff}
 .ride-acts{display:flex;gap:8px}
 .ride-acts .add:disabled{opacity:.4;cursor:not-allowed}
+.ridecard.dim{opacity:.55}
+.ride-tags .tg{background:#eee;color:#555}
 
 /* --- landing / entry gate --- */
 .landing{max-width:860px;margin:0 auto;padding-top:26px}
